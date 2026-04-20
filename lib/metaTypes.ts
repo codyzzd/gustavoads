@@ -176,6 +176,7 @@ export interface AdCreative {
 
 export function getCreativeImageUrl(creative: AdCreative | undefined): string | undefined {
   if (!creative) return undefined;
+  // image_url preserves native aspect ratio. thumbnail_url is fallback for video ads.
   if (creative.image_url) return creative.image_url;
   if (creative.thumbnail_url) return creative.thumbnail_url;
   if (creative.picture) return creative.picture;

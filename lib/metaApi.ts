@@ -397,12 +397,14 @@ export class MetaAdsClient {
     // NOTE: Fields like `picture`, `effective_object_story_spec`, `object_story_spec`,
     // and `asset_feed_spec` cause the Meta API to silently return an empty response when
     // used as creative subfields on the /ads edge. Only use fields confirmed to be safe.
+    // NOTE: `image_url` and `thumbnail_url` from inline creative{} expansion are ALWAYS
+    // low-resolution — thumbnail_width/thumbnail_height params don't propagate into
+    // nested field expansions. We intentionally omit them here and fetch all images via
+    // getCreativeThumbnail() which hits /{creative_id} directly where the params work.
     const creativeFields = [
       'id', 'name', 'title', 'body',
       'call_to_action_type',
       'object_type',
-      'image_url',
-      'thumbnail_url',
       'image_hash',
       'video_id',
     ].join(',');
@@ -410,8 +412,6 @@ export class MetaAdsClient {
     const response = await this.fetch<MetaApiResponse<Ad>>(`${adsetId}/ads`, {
       fields: `id,name,status,creative{${creativeFields}},insights.date_preset(${datePreset}){${insightFields}}`,
       limit: '50',
-      thumbnail_width: '1080',
-      thumbnail_height: '1080',
     });
 
     const ads: Ad[] = (response.data || []).map((ad) => {
@@ -428,17 +428,14 @@ export class MetaAdsClient {
       return { ...ad, adFormat, insightsSummary, creativeScore: scoreCreative(ad, insightsSummary, mode) };
     });
 
-    // Second pass: fetch thumbnails for ads where the initial query didn't return an image URL.
-    // The Meta API often omits image_url/thumbnail_url on the creative object itself —
-    // a direct call to /{creative_id} with specific fields is more reliable.
-    const missingImage = ads.filter((ad) => {
-      if (!ad.creative?.id) return false;
-      return !(ad.creative.image_url || ad.creative.thumbnail_url);
-    });
+    // Second pass: fetch high-res images for ALL creatives via the direct /{creative_id}
+    // endpoint. Inline creative{image_url/thumbnail_url} expansion never respects
+    // thumbnail_width/thumbnail_height — only the direct endpoint does.
+    const adsWithCreative = ads.filter((ad) => !!ad.creative?.id);
 
-    if (missingImage.length > 0) {
+    if (adsWithCreative.length > 0) {
       await Promise.all(
-        missingImage.map(async (ad) => {
+        adsWithCreative.map(async (ad) => {
           const url = await this.getCreativeThumbnail(ad.creative!.id);
           if (url && ad.creative) {
             ad.creative.thumbnail_url = url;
@@ -455,15 +452,18 @@ export class MetaAdsClient {
     try {
       // Only request fields confirmed safe — `picture` and `effective_object_story_spec`
       // cause the API to return empty responses for many ad types.
+      // Prefer image_url — it's the original uploaded asset with native proportions.
+      // For thumbnail_url (video ads), request only thumbnail_width without height so
+      // Meta generates the thumbnail at 1080px wide preserving the original aspect ratio.
+      // Specifying both width AND height forces Meta to crop to exactly those dimensions.
       const res = await this.fetch<{
         thumbnail_url?: string;
         image_url?: string;
       }>(`${creativeId}`, {
         fields: 'thumbnail_url,image_url',
         thumbnail_width: '1080',
-        thumbnail_height: '1080',
       });
-      return res.thumbnail_url || res.image_url;
+      return res.image_url || res.thumbnail_url;
     } catch {
       return undefined;
     }

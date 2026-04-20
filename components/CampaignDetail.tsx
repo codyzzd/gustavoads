@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import type { Campaign, CampaignMode, MetaPermission } from '@/lib/metaTypes';
 import { CreativeGallery } from '@/components/CreativeGallery';
+import { useApp } from '@/app/providers';
 import {
   CheckCircle, AlertTriangle, DollarSign, TrendingUp, Pause,
   RefreshCw, Lock, ArrowLeft, Image,
@@ -56,6 +57,7 @@ function ActionButton({
 export function CampaignDetail({ campaign, currency, campaignMode, metaPermission, onBack }: CampaignDetailProps) {
   const [activeTab, setActiveTab] = useState<'diagnosis' | 'creatives' | 'adsets'>('diagnosis');
   const canWrite = metaPermission === 'readwrite';
+  const { aiConfig, clientProfile } = useApp();
   const ins = campaign.insightsSummary;
   const adsets = campaign.adsets || [];
   const allAds = adsets.flatMap((as) => (as.ads || []).map((ad) => ({ ad, adsetName: as.name })));
@@ -300,7 +302,13 @@ export function CampaignDetail({ campaign, currency, campaignMode, metaPermissio
             <p style={{ fontSize: '0.9rem' }}>Nenhum criativo encontrado nesta campanha.</p>
           </div>
         ) : (
-          <CreativeGallery account={mockAccount} isLoading={false} campaignMode={campaignMode} />
+          <CreativeGallery
+            account={mockAccount}
+            isLoading={false}
+            campaignMode={campaignMode}
+            clientProfile={clientProfile}
+            aiConfig={aiConfig}
+          />
         )
       )}
 
