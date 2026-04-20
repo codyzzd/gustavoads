@@ -102,15 +102,56 @@ function ls(key: string, fallback = '') {
   return localStorage.getItem(key) || fallback;
 }
 
+function setLs(key: string, value: string) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(key, value);
+}
+
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>(() => (ls('theme', 'dark') as Theme));
+  const [theme, setThemeState] = useState<Theme>('dark');
   const setTheme = (t: Theme) => {
     setThemeState(t);
-    localStorage.setItem('theme', t);
-    document.documentElement.setAttribute('data-theme', t);
+    setLs('theme', t);
+    if (typeof document !== 'undefined') {
+      document.documentElement.setAttribute('data-theme', t);
+    }
   };
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
+    const storedTheme = ls('theme', 'dark');
+    setThemeState(storedTheme === 'light' ? 'light' : 'dark');
+    setDatePreset((ls('date_preset', 'last_30d') as DatePreset));
+    setCampaignModeState((ls('campaign_mode', 'ecommerce') as CampaignMode));
+    setMetaAccessTokenState(ls('meta_access_token'));
+    setAdAccountIdState(ls('meta_ad_account_id'));
+    setMetaPermissionState((ls('meta_permission', 'readonly') as MetaPermission));
+    setTokenType((ls('meta_token_type', 'short') as TokenType));
+    setMetaAppId(ls('meta_app_id'));
+    setMetaAppSecret(ls('meta_app_secret'));
+
+    const rawProvider = ls('ai_provider', 'demo');
+    const provider = (rawProvider in DEFAULT_MODELS ? rawProvider : 'demo') as AIProvider;
+    setAiProviderState(provider);
+    setAiApiKeys({
+      gemini: ls('gemini_api_key'),
+      openrouter: ls('openrouter_api_key'),
+      openai: ls('openai_api_key'),
+      anthropic: ls('anthropic_api_key'),
+      demo: '',
+    });
+    const savedModel = ls(`ai_model_${provider}`);
+    const validIds = (MODEL_OPTIONS[provider] || []).map((m) => m.id);
+    setAiModelState(savedModel && validIds.includes(savedModel) ? savedModel : DEFAULT_MODELS[provider]);
+
+    setClientNiche(ls('client_niche'));
+    setClientProduct(ls('client_product'));
+    setClientObjective(ls('client_objective', 'leads'));
+    setClientTicket(ls('client_ticket'));
+    setClientDifferentials(ls('client_differentials'));
+  }, []);
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.setAttribute('data-theme', theme);
+    }
   }, [theme]);
 
   // Meta
@@ -119,74 +160,69 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [syncError, setSyncError] = useState<string | null>(null);
   const [lastSynced, setLastSynced] = useState<string | null>(null);
   const [metaContext, setMetaContext] = useState<string | undefined>(undefined);
-  const [datePreset, setDatePreset] = useState<DatePreset>(() => (ls('date_preset', 'last_30d') as DatePreset));
-  const [campaignMode, setCampaignModeState] = useState<CampaignMode>(() => (ls('campaign_mode', 'ecommerce') as CampaignMode));
+  const [datePreset, setDatePreset] = useState<DatePreset>('last_30d');
+  const [campaignMode, setCampaignModeState] = useState<CampaignMode>('ecommerce');
   const setCampaignMode = (m: CampaignMode) => {
     setCampaignModeState(m);
-    localStorage.setItem('campaign_mode', m);
+    setLs('campaign_mode', m);
   };
 
-  const [metaAccessToken, setMetaAccessTokenState] = useState(() => ls('meta_access_token'));
-  const setMetaAccessToken = (v: string) => { setMetaAccessTokenState(v); localStorage.setItem('meta_access_token', v); };
+  const [metaAccessToken, setMetaAccessTokenState] = useState('');
+  const setMetaAccessToken = (v: string) => { setMetaAccessTokenState(v); setLs('meta_access_token', v); };
 
-  const [adAccountId, setAdAccountIdState] = useState(() => ls('meta_ad_account_id'));
-  const setAdAccountId = (v: string) => { setAdAccountIdState(v); localStorage.setItem('meta_ad_account_id', v); };
+  const [adAccountId, setAdAccountIdState] = useState('');
+  const setAdAccountId = (v: string) => { setAdAccountIdState(v); setLs('meta_ad_account_id', v); };
 
-  const [metaPermission, setMetaPermissionState] = useState<MetaPermission>(() => (ls('meta_permission', 'readonly') as MetaPermission));
-  const saveMetaPermission = (p: MetaPermission) => { setMetaPermissionState(p); localStorage.setItem('meta_permission', p); };
+  const [metaPermission, setMetaPermissionState] = useState<MetaPermission>('readonly');
+  const saveMetaPermission = (p: MetaPermission) => { setMetaPermissionState(p); setLs('meta_permission', p); };
 
-  const [tokenType, setTokenType] = useState<TokenType>(() => (ls('meta_token_type', 'short') as TokenType));
-  const [metaAppId, setMetaAppId] = useState(() => ls('meta_app_id'));
-  const [metaAppSecret, setMetaAppSecret] = useState(() => ls('meta_app_secret'));
+  const [tokenType, setTokenType] = useState<TokenType>('short');
+  const [metaAppId, setMetaAppId] = useState('');
+  const [metaAppSecret, setMetaAppSecret] = useState('');
   const [isConvertingToken, setIsConvertingToken] = useState(false);
   const [convertError, setConvertError] = useState<string | null>(null);
   const [convertSuccess, setConvertSuccess] = useState(false);
 
   // AI
-  const [aiProvider, setAiProviderState] = useState<AIProvider>(() => (ls('ai_provider', 'demo') as AIProvider));
-  const [aiApiKeys, setAiApiKeys] = useState<Record<AIProvider, string>>(() => ({
-    gemini: ls('gemini_api_key'),
-    openrouter: ls('openrouter_api_key'),
-    openai: ls('openai_api_key'),
-    anthropic: ls('anthropic_api_key'),
+  const [aiProvider, setAiProviderState] = useState<AIProvider>('demo');
+  const [aiApiKeys, setAiApiKeys] = useState<Record<AIProvider, string>>({
+    gemini: '',
+    openrouter: '',
+    openai: '',
+    anthropic: '',
     demo: '',
-  }));
-  const [aiModel, setAiModelState] = useState<string>(() => {
-    const provider = ls('ai_provider', 'demo') as AIProvider;
-    const saved = ls(`ai_model_${provider}`);
-    const validIds = (MODEL_OPTIONS[provider] || []).map((m) => m.id);
-    return saved && validIds.includes(saved) ? saved : DEFAULT_MODELS[provider];
   });
+  const [aiModel, setAiModelState] = useState<string>(DEFAULT_MODELS.demo);
 
   const aiConfig: AIProviderConfig = { provider: aiProvider, apiKey: aiApiKeys[aiProvider] || '', model: aiModel };
 
   const switchProvider = (p: AIProvider) => {
     setAiProviderState(p);
-    localStorage.setItem('ai_provider', p);
+    setLs('ai_provider', p);
     const saved = ls(`ai_model_${p}`);
     const validIds = (MODEL_OPTIONS[p] || []).map((m) => m.id);
     const resolved = saved && validIds.includes(saved) ? saved : DEFAULT_MODELS[p];
     setAiModelState(resolved);
-    localStorage.setItem(`ai_model_${p}`, resolved);
+    setLs(`ai_model_${p}`, resolved);
   };
   const switchModel = (m: string) => {
     setAiModelState(m);
-    localStorage.setItem(`ai_model_${aiProvider}`, m);
+    setLs(`ai_model_${aiProvider}`, m);
   };
   const saveAiKey = (provider: AIProvider, key: string) => {
     setAiApiKeys((prev) => ({ ...prev, [provider]: key }));
-    localStorage.setItem(`${provider}_api_key`, key);
+    setLs(`${provider}_api_key`, key);
   };
 
   // Client profile
-  const [clientNiche, setClientNiche] = useState(() => ls('client_niche'));
-  const [clientProduct, setClientProduct] = useState(() => ls('client_product'));
-  const [clientObjective, setClientObjective] = useState(() => ls('client_objective', 'leads'));
-  const [clientTicket, setClientTicket] = useState(() => ls('client_ticket'));
-  const [clientDifferentials, setClientDifferentials] = useState(() => ls('client_differentials'));
+  const [clientNiche, setClientNiche] = useState('');
+  const [clientProduct, setClientProduct] = useState('');
+  const [clientObjective, setClientObjective] = useState('leads');
+  const [clientTicket, setClientTicket] = useState('');
+  const [clientDifferentials, setClientDifferentials] = useState('');
   const saveClientField = (key: string, value: string, setter: (v: string) => void) => {
     setter(value);
-    localStorage.setItem(key, value);
+    setLs(key, value);
   };
   const clientProfile = clientNiche || clientProduct ? {
     niche: clientNiche, product: clientProduct, objective: clientObjective,

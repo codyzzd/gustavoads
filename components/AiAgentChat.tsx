@@ -142,7 +142,7 @@ export function AiAgentChat({ aiConfig, metaContext, hasMetaData, clientProfile 
           {
             id: (Date.now() + 1).toString(),
             role: 'agent',
-            text: `> ⏳ *Quota da API atingida — respondendo via Modo Demo temporariamente. Aguarde 1 min ou troque para Gemini 1.5 Flash 8B nas Configurações.*\n\n${demoFallback}`,
+            text: `> ⏳ *Quota da API atingida — respondendo via Modo Demo temporariamente. Aguarde 1 min ou troque para Gemini 2.0 Flash Lite / OpenRouter free nas Configurações.*\n\n${demoFallback}`,
           },
         ]);
       } else {

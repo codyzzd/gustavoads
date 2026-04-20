@@ -1,16 +1,18 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import ReactMarkdown from 'react-markdown';
 import type { Ad, AdAccount } from '@/lib/metaTypes';
 import type { CampaignMode } from '@/lib/metaTypes';
-import { getCreativeImageUrl, getCreativeBody, getCreativeTitle } from '@/lib/metaTypes';
+import { getCreativeImageUrl, getCreativeBody, getCreativeTitle, getCreativeCaption } from '@/lib/metaTypes';
 import {
   TrendingUp, Pause, RefreshCw, Eye, AlertTriangle,
-  Lightbulb, Target, Film, Image, Video, Layers, Zap, X,
+  Target, Film, Image, Video, Layers, Zap, X,
   ChevronRight, Sparkles, Clock,
 } from 'lucide-react';
-import type { AIProviderConfig } from '@/lib/aiClient';
-import { analyzeCreativeVision } from '@/lib/aiClient';
+import type { AIProviderConfig, CopyChangeSuggestion } from '@/lib/aiClient';
+import { analyzeCreativeVision, analyzeCreativeCopy, generateCopyChangeSuggestions } from '@/lib/aiClient';
 
 interface ClientProfile {
   niche?: string;
@@ -26,6 +28,9 @@ interface CreativeGalleryProps {
   campaignMode?: CampaignMode;
   clientProfile?: ClientProfile;
   aiConfig?: AIProviderConfig;
+  selectedCreativeId?: string;
+  renderDetailAsPage?: boolean;
+  onBackFromDetail?: () => void;
 }
 
 function fmtCur(v: number, cur = 'BRL') {
@@ -47,52 +52,6 @@ const FATIGUE_MAP = {
   HIGH:     { label: 'Alta',       color: 'var(--danger)' },
   CRITICAL: { label: '🔴 Crítica', color: 'var(--danger)' },
 };
-
-function getNicheHooks(niche?: string, product?: string): string[] {
-  const n = (niche || '').toLowerCase();
-  const p = (product || '').toLowerCase();
-
-  if (n.includes('consórc') || p.includes('consórc')) {
-    return [
-      '💡 Hook: "O aluguel te custou mais de R$50k nos últimos 5 anos — e nenhum centavo voltou."',
-      '💡 Hook: "Quem tem consórcio paga parcela de imóvel SEM pagar juros de banco"',
-      '💡 Hook: "Como esse [profissão] comprou o apartamento em 18 meses — sem entrada"',
-      '💡 Ângulo: Simulação visual comparando consórcio x aluguel x financiamento bancário',
-      '💡 CTA: "Simular meu consórcio agora" — evite "Saiba mais" (muito genérico)',
-    ];
-  }
-  if (n.includes('imóvel') || n.includes('imobili') || p.includes('imóvel')) {
-    return [
-      '💡 Hook: "Renda de R$3.000/mês pode ser suficiente para sair do aluguel — veja como"',
-      '💡 Hook: Mostre o imóvel pronto por dentro, câmera lenta — desperte o sonho',
-      '💡 Ângulo: "Qual bairro cabe no seu orçamento?" — quiz no formulário',
-      '💡 CTA: "Ver imóveis disponíveis" com foto + preço visível no anúncio',
-    ];
-  }
-  if (n.includes('estétic') || n.includes('clínic') || n.includes('saúde')) {
-    return [
-      '💡 Hook: Antes/Depois real (foco no sorriso, não no procedimento)',
-      '💡 Hook: "Você merece se sentir bem — e sem longa lista de espera"',
-      '💡 Ângulo: Mostre o ambiente da clínica, a equipe, o processo — gera confiança',
-      '💡 CTA: "Agendar avaliação gratuita" — reduz barreira de entrada',
-      '📌 2026: Use Reels 9:16 mostrando a experiência do cliente',
-    ];
-  }
-  if (n.includes('educação') || n.includes('curso') || n.includes('infoprod')) {
-    return [
-      '💡 Hook: "Em 4 semanas, aprendi o que 4 anos de faculdade não me ensinou"',
-      '💡 Ângulo: Mostre o resultado do aluno (renda, aprovação, mudança de vida)',
-      '💡 Formato: VSL de 60-90s funciona melhor que estático para infoprodutos',
-      '💡 CTA: "Garantir minha vaga" ou "Acessar aula grátis"',
-    ];
-  }
-  return [
-    '💡 Hook: Pare o scroll nos primeiros 2s — dado surpreendente, pergunta ou transformação visual',
-    '💡 Ângulo: Dor específica → solução do produto → prova social → CTA com benefício',
-    '💡 O criativo que mais converte: UGC ou depoimento real, câmera na mão',
-    '💡 2026: Otimize para retenção de vídeo, não apenas para o click',
-  ];
-}
 
 function getQualitativeAnalysis(ad: Ad, niche?: string, mode?: CampaignMode) {
   const ins = ad.insightsSummary;
@@ -135,7 +94,7 @@ function getQualitativeAnalysis(ad: Ad, niche?: string, mode?: CampaignMode) {
   }
 
   if (creative) {
-    const body = creative.body || '';
+    const body = getCreativeBody(creative);
     if (body.length < 50) improvements.push('Copy curta: adicione 1-2 linhas com benefício principal + prova social.');
     if (!body.includes('?') && !body.includes('!')) improvements.push('Adicione emoção ao copy: perguntas engajam, exclamações criam urgência.');
   }
@@ -182,18 +141,24 @@ function FormatBadge({ format }: { format?: string }) {
 // ── Compact gallery card ───────────────────────────────────────────────────
 interface CardItem {
   ad: Ad;
+  campaignId: string;
   campaignName: string;
   adsetName: string;
   currency: string;
   rank: number;
   niche?: string;
-  product?: string;
   mode?: CampaignMode;
   aiConfig?: AIProviderConfig;
 }
 
 interface SavedAnalysis {
   text: string;
+  analyzedAt: string;
+  provider: string;
+}
+
+interface SavedCopySuggestions {
+  suggestions: CopyChangeSuggestion[];
   analyzedAt: string;
   provider: string;
 }
@@ -270,7 +235,7 @@ function CreativeCard({ item, onClick }: { item: CardItem; onClick: () => void }
 
       {/* ── Ad body text ── */}
       {bodyText && (
-        <div style={{ padding: '0 12px 8px', fontSize: '0.8rem', color: 'var(--fg-subtle)', lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
+        <div style={{ padding: '0 12px 8px', fontSize: '0.8rem', color: 'var(--fg-subtle)', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
           {bodyText}
         </div>
       )}
@@ -281,7 +246,7 @@ function CreativeCard({ item, onClick }: { item: CardItem; onClick: () => void }
           <img
             src={imageUrl}
             alt={ad.name}
-            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+            style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
             onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
           />
         ) : (
@@ -323,7 +288,7 @@ function CreativeCard({ item, onClick }: { item: CardItem; onClick: () => void }
       <div style={{ padding: '10px 12px', borderTop: '1px solid var(--border-base)', display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg-subtle)' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           {titleText && (
-            <div style={{ fontSize: '0.8125rem', fontWeight: 600, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <div style={{ fontSize: '0.8125rem', fontWeight: 600, lineHeight: 1.3, whiteSpace: 'normal', wordBreak: 'break-word' }}>
               {titleText}
             </div>
           )}
@@ -337,9 +302,9 @@ function CreativeCard({ item, onClick }: { item: CardItem; onClick: () => void }
       </div>
 
       {/* ── Metrics + button ── */}
-      <div style={{ padding: '8px 12px 10px', display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div style={{ padding: '8px 12px 10px', display: 'grid', gap: 8 }}>
         {ins && (
-          <>
+          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
             <div style={{ background: 'var(--bg-base)', borderRadius: 5, padding: '4px 8px', fontSize: '0.72rem' }}>
               <span style={{ color: 'var(--fg-muted)' }}>CTR </span>
               <span style={{ fontWeight: 600 }}>{ins.ctr.toFixed(2)}%</span>
@@ -351,23 +316,25 @@ function CreativeCard({ item, onClick }: { item: CardItem; onClick: () => void }
             {primaryMetric && (
               <div style={{ background: 'var(--bg-base)', borderRadius: 5, padding: '4px 8px', fontSize: '0.72rem', fontWeight: 600, color: 'var(--fg-subtle)' }}>{primaryMetric}</div>
             )}
-          </>
+          </div>
         )}
-        <button
-          onClick={onClick}
-          style={{
-            marginLeft: 'auto', flexShrink: 0,
-            display: 'flex', alignItems: 'center', gap: 4,
-            background: 'transparent', border: '1px solid var(--border-base)',
-            borderRadius: 5, height: 28, padding: '0 10px',
-            color: 'var(--fg-subtle)', fontSize: '0.75rem', cursor: 'pointer',
-            transition: 'background 0.15s, color 0.15s',
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; e.currentTarget.style.color = 'var(--fg-base)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--fg-subtle)'; }}
-        >
-          Ver detalhes <ChevronRight size={12} />
-        </button>
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            onClick={onClick}
+            style={{
+              flexShrink: 0,
+              display: 'flex', alignItems: 'center', gap: 4,
+              background: 'transparent', border: '1px solid var(--border-base)',
+              borderRadius: 5, height: 28, padding: '0 10px',
+              color: 'var(--fg-subtle)', fontSize: '0.75rem', cursor: 'pointer',
+              transition: 'background 0.15s, color 0.15s',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; e.currentTarget.style.color = 'var(--fg-base)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--fg-subtle)'; }}
+          >
+            Ver detalhes <ChevronRight size={12} />
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -375,29 +342,59 @@ function CreativeCard({ item, onClick }: { item: CardItem; onClick: () => void }
 
 // ── Detail Modal ───────────────────────────────────────────────────────────
 function CreativeDetailModal({ item, onClose }: { item: CardItem; onClose: () => void }) {
-  const { ad, campaignName, adsetName, currency, rank, niche, product, mode, aiConfig } = item;
+  const { ad, campaignName, adsetName, currency, rank, niche, mode, aiConfig } = item;
   const score = ad.creativeScore;
   const ins = ad.insightsSummary;
   const imageUrl = getCreativeImageUrl(ad.creative);
   const bodyText = getCreativeBody(ad.creative);
   const titleText = getCreativeTitle(ad.creative);
+  const captionText = getCreativeCaption(ad.creative);
+  const ctaType = ad.creative?.call_to_action_type;
+  const ctaLabel = ctaType ? (CTA_LABELS[ctaType] ?? ctaType.replace(/_/g, ' ').toLowerCase()) : '';
   const rec = score ? (REC_MAP[score.recommendation as RecommendationType] || REC_MAP.KEEP) : null;
   const fatigue = score ? (FATIGUE_MAP[score.fatigueLevel] || FATIGUE_MAP.LOW) : null;
   const { insights, improvements } = getQualitativeAnalysis(ad, niche, mode);
-  const nicheHooks = getNicheHooks(niche, product);
+  const hasCopy = Boolean(titleText?.trim() || bodyText?.trim());
+  const metricsPayload = ins ? {
+    ctr: ins.ctr,
+    cpc: ins.cpc,
+    spend: ins.spend,
+    roas: ins.roas,
+    cpl: ins.costPerLead,
+    cpm: ins.cpm,
+    impressions: ins.impressions,
+    frequency: ins.frequency,
+    costPerConversation: ins.costPerConversation,
+    costPerLandingPageView: ins.costPerLandingPageView,
+    messagesStarted: ins.messagesStarted,
+    linkClicks: ins.linkClicks,
+  } : undefined;
 
   // ── AI Vision Analysis ──
-  const storageKey = `creative_ai_${ad.id}`;
+  const visionStorageKey = `creative_ai_${ad.id}`;
+  const copyStorageKey = `creative_copy_ai_${ad.id}`;
+  const copySuggestionsStorageKey = `creative_copy_suggestions_ai_${ad.id}`;
   const [savedAnalysis, setSavedAnalysis] = useState<SavedAnalysis | null>(null);
+  const [savedCopyAnalysis, setSavedCopyAnalysis] = useState<SavedAnalysis | null>(null);
+  const [savedCopySuggestions, setSavedCopySuggestions] = useState<SavedCopySuggestions | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isAnalyzingCopy, setIsAnalyzingCopy] = useState(false);
+  const [isGeneratingCopySuggestions, setIsGeneratingCopySuggestions] = useState(false);
+  const [isCopySuggestionsModalOpen, setIsCopySuggestionsModalOpen] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [copyAnalysisError, setCopyAnalysisError] = useState<string | null>(null);
+  const [copySuggestionsError, setCopySuggestionsError] = useState<string | null>(null);
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(storageKey);
-      if (raw) setSavedAnalysis(JSON.parse(raw));
+      const visionRaw = localStorage.getItem(visionStorageKey);
+      if (visionRaw) setSavedAnalysis(JSON.parse(visionRaw));
+      const copyRaw = localStorage.getItem(copyStorageKey);
+      if (copyRaw) setSavedCopyAnalysis(JSON.parse(copyRaw));
+      const suggestionsRaw = localStorage.getItem(copySuggestionsStorageKey);
+      if (suggestionsRaw) setSavedCopySuggestions(JSON.parse(suggestionsRaw));
     } catch { /* ignore */ }
-  }, [storageKey]);
+  }, [visionStorageKey, copyStorageKey, copySuggestionsStorageKey]);
 
   const handleAnalyze = async () => {
     if (!aiConfig || !imageUrl) return;
@@ -409,11 +406,11 @@ function CreativeDetailModal({ item, onClose }: { item: CardItem; onClose: () =>
         adName: ad.name,
         campaignName,
         adFormat: ad.adFormat,
-        metrics: ins ? {
-          ctr: ins.ctr, cpc: ins.cpc, spend: ins.spend,
-          roas: ins.roas, cpl: ins.costPerLead, cpm: ins.cpm,
-          impressions: ins.impressions, frequency: ins.frequency,
-        } : undefined,
+        titleText,
+        bodyText,
+        captionText,
+        ctaLabel,
+        metrics: metricsPayload,
         niche,
         currency,
       });
@@ -423,11 +420,79 @@ function CreativeDetailModal({ item, onClose }: { item: CardItem; onClose: () =>
         provider: aiConfig.provider,
       };
       setSavedAnalysis(result);
-      localStorage.setItem(storageKey, JSON.stringify(result));
+      localStorage.setItem(visionStorageKey, JSON.stringify(result));
     } catch (e) {
       setAnalysisError((e as Error).message || 'Erro ao analisar.');
     } finally {
       setIsAnalyzing(false);
+    }
+  };
+
+  const handleAnalyzeCopy = async () => {
+    if (!aiConfig || !hasCopy) return;
+    setIsAnalyzingCopy(true);
+    setCopyAnalysisError(null);
+    try {
+      const text = await analyzeCreativeCopy(aiConfig, {
+        adName: ad.name,
+        campaignName,
+        adFormat: ad.adFormat,
+        titleText,
+        bodyText,
+        ctaLabel,
+        metrics: metricsPayload,
+        niche,
+        currency,
+      });
+      const result: SavedAnalysis = {
+        text,
+        analyzedAt: new Date().toISOString(),
+        provider: aiConfig.provider,
+      };
+      setSavedCopyAnalysis(result);
+      localStorage.setItem(copyStorageKey, JSON.stringify(result));
+    } catch (e) {
+      setCopyAnalysisError((e as Error).message || 'Erro ao analisar copy.');
+    } finally {
+      setIsAnalyzingCopy(false);
+    }
+  };
+
+  const handleGenerateCopySuggestions = async ({ forceRegenerate = false }: { forceRegenerate?: boolean } = {}) => {
+    if (!aiConfig || !hasCopy) return;
+
+    if (!forceRegenerate && savedCopySuggestions?.suggestions?.length) {
+      setIsCopySuggestionsModalOpen(true);
+      return;
+    }
+
+    setIsGeneratingCopySuggestions(true);
+    setCopySuggestionsError(null);
+    try {
+      const suggestions = await generateCopyChangeSuggestions(aiConfig, {
+        adName: ad.name,
+        campaignName,
+        adFormat: ad.adFormat,
+        titleText,
+        bodyText,
+        ctaLabel,
+        metrics: metricsPayload,
+        niche,
+        currency,
+      });
+
+      const result: SavedCopySuggestions = {
+        suggestions,
+        analyzedAt: new Date().toISOString(),
+        provider: aiConfig.provider,
+      };
+      setSavedCopySuggestions(result);
+      localStorage.setItem(copySuggestionsStorageKey, JSON.stringify(result));
+      setIsCopySuggestionsModalOpen(true);
+    } catch (e) {
+      setCopySuggestionsError((e as Error).message || 'Erro ao gerar mudanças possíveis de copy.');
+    } finally {
+      setIsGeneratingCopySuggestions(false);
     }
   };
 
@@ -441,6 +506,30 @@ function CreativeDetailModal({ item, onClose }: { item: CardItem; onClose: () =>
   if (mode === 'leads') primaryMetric = { label: 'CPL', value: ins?.costPerLead ? fmtCur(ins.costPerLead, currency) : 'N/A' };
   if (mode === 'traffic') primaryMetric = { label: 'Custo/LPV', value: ins?.costPerLandingPageView ? fmtCur(ins.costPerLandingPageView, currency) : 'N/A' };
   if (mode === 'awareness') primaryMetric = { label: 'CPM', value: ins?.cpm ? fmtCur(ins.cpm, currency) : 'N/A' };
+
+  const renderAnalysisText = (text: string) => (
+    <div style={{ fontSize: '0.8125rem', color: 'var(--fg-subtle)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
+      {text.split('\n').map((line, i) => {
+        if (line.startsWith('## ')) {
+          return (
+            <div key={i} style={{ fontWeight: 700, color: 'var(--fg-base)', fontSize: '0.8125rem', marginTop: i > 0 ? 14 : 0, marginBottom: 4 }}>
+              {line.replace('## ', '')}
+            </div>
+          );
+        }
+        if (line.startsWith('- ') || line.startsWith('→ ')) {
+          return (
+            <div key={i} style={{ paddingLeft: 10, marginBottom: 3 }}>
+              <span style={{ color: 'var(--accent-primary)', marginRight: 6 }}>→</span>
+              {line.replace(/^[-→] /, '')}
+            </div>
+          );
+        }
+        if (line.trim() === '') return <div key={i} style={{ height: 4 }} />;
+        return <div key={i} style={{ marginBottom: 2 }}>{line}</div>;
+      })}
+    </div>
+  );
 
   return (
     <div
@@ -514,8 +603,8 @@ function CreativeDetailModal({ item, onClose }: { item: CardItem; onClose: () =>
               {/* Copy preview */}
               {(titleText || bodyText) && (
                 <div style={{ background: 'var(--bg-base)', borderRadius: 7, padding: '10px 12px', fontSize: '0.78rem' }}>
-                  {titleText && <div style={{ fontWeight: 600, marginBottom: 4, lineHeight: 1.3 }}>{titleText.slice(0, 120)}{titleText.length > 120 ? '…' : ''}</div>}
-                  {bodyText && <div style={{ color: 'var(--fg-subtle)', lineHeight: 1.5 }}>{bodyText.slice(0, 200)}{bodyText.length > 200 ? '…' : ''}</div>}
+                  {titleText && <div style={{ fontWeight: 600, marginBottom: 4, lineHeight: 1.3, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{titleText}</div>}
+                  {bodyText && <div style={{ color: 'var(--fg-subtle)', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{bodyText}</div>}
                 </div>
               )}
 
@@ -634,18 +723,6 @@ function CreativeDetailModal({ item, onClose }: { item: CardItem; onClose: () =>
                 </div>
               )}
 
-              {/* Niche hooks */}
-              {nicheHooks.length > 0 && (
-                <div style={{ background: 'var(--accent-subtle)', border: '1px solid var(--accent-border)', borderRadius: 8, padding: '12px 14px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, fontSize: '0.75rem', fontWeight: 700, color: 'var(--accent-primary)' }}>
-                    <Lightbulb size={13} /> HOOKS & ÂNGULOS — {(niche || 'SEU NICHO').toUpperCase()}
-                  </div>
-                  {nicheHooks.map((h, i) => (
-                    <div key={i} style={{ fontSize: '0.8125rem', color: 'var(--fg-subtle)', marginBottom: 6, lineHeight: 1.5 }}>{h}</div>
-                  ))}
-                </div>
-              )}
-
               {/* ── AI Vision Analysis ── */}
               {aiConfig && imageUrl && (
                 <div style={{ border: '1px solid var(--border-base)', borderRadius: 8, overflow: 'hidden' }}>
@@ -691,7 +768,7 @@ function CreativeDetailModal({ item, onClose }: { item: CardItem; onClose: () =>
 
                   {/* Error */}
                   {analysisError && (
-                    <div style={{ padding: '10px 14px', background: 'var(--danger-bg)', borderTop: '1px solid var(--danger-border)', fontSize: '0.8rem', color: 'var(--danger)', lineHeight: 1.5 }}>
+                    <div style={{ padding: '10px 14px', background: 'var(--danger-bg)', borderTop: '1px solid var(--danger-border)', fontSize: '0.8rem', color: 'var(--danger)', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                       {analysisError}
                     </div>
                   )}
@@ -699,27 +776,7 @@ function CreativeDetailModal({ item, onClose }: { item: CardItem; onClose: () =>
                   {/* Saved analysis */}
                   {savedAnalysis && !isAnalyzing && (
                     <div style={{ padding: '14px 16px', background: 'var(--bg-subtle)' }}>
-                      <div style={{ fontSize: '0.8125rem', color: 'var(--fg-subtle)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
-                        {savedAnalysis.text.split('\n').map((line, i) => {
-                          if (line.startsWith('## ')) {
-                            return (
-                              <div key={i} style={{ fontWeight: 700, color: 'var(--fg-base)', fontSize: '0.8125rem', marginTop: i > 0 ? 14 : 0, marginBottom: 4 }}>
-                                {line.replace('## ', '')}
-                              </div>
-                            );
-                          }
-                          if (line.startsWith('- ') || line.startsWith('→ ')) {
-                            return (
-                              <div key={i} style={{ paddingLeft: 10, marginBottom: 3 }}>
-                                <span style={{ color: 'var(--accent-primary)', marginRight: 6 }}>→</span>
-                                {line.replace(/^[-→] /, '')}
-                              </div>
-                            );
-                          }
-                          if (line.trim() === '') return <div key={i} style={{ height: 4 }} />;
-                          return <div key={i} style={{ marginBottom: 2 }}>{line}</div>;
-                        })}
-                      </div>
+                      {renderAnalysisText(savedAnalysis.text)}
                     </div>
                   )}
 
@@ -731,10 +788,236 @@ function CreativeDetailModal({ item, onClose }: { item: CardItem; onClose: () =>
                   )}
                 </div>
               )}
+
+              {/* ── AI Copy Analysis ── */}
+              {aiConfig && (
+                <div style={{ border: '1px solid var(--border-base)', borderRadius: 8, overflow: 'hidden' }}>
+                  {/* Header */}
+                  <div style={{
+                    padding: '10px 14px',
+                    background: 'var(--bg-base)',
+                    borderBottom: savedCopyAnalysis ? '1px solid var(--border-base)' : 'none',
+                    display: 'flex', alignItems: 'center', gap: 10,
+                  }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', fontWeight: 700, color: 'var(--fg-base)', marginBottom: savedCopyAnalysis ? 2 : 0 }}>
+                        <Sparkles size={13} color="var(--accent-primary)" /> ANÁLISE DE COPY COM IA
+                      </div>
+                      {savedCopyAnalysis && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.7rem', color: 'var(--fg-muted)' }}>
+                          <Clock size={10} />
+                          {new Date(savedCopyAnalysis.analyzedAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
+                          {' · '}{savedCopyAnalysis.provider}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                      <button
+                        onClick={handleAnalyzeCopy}
+                        disabled={isAnalyzingCopy || !hasCopy}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 6,
+                          padding: '0 12px', height: 32, borderRadius: 6,
+                          background: isAnalyzingCopy || !hasCopy ? 'var(--bg-hover)' : 'var(--accent-primary)',
+                          border: 'none', color: 'white', fontSize: '0.8rem', fontWeight: 600,
+                          cursor: isAnalyzingCopy || !hasCopy ? 'not-allowed' : 'pointer',
+                          opacity: isAnalyzingCopy || !hasCopy ? 0.7 : 1,
+                          transition: 'background 0.15s',
+                        }}
+                      >
+                        {isAnalyzingCopy
+                          ? <><RefreshCw size={13} style={{ animation: 'spin 1s linear infinite' }} /> Analisando...</>
+                          : <><Sparkles size={13} /> {savedCopyAnalysis ? 'Reanalisar Copy' : 'Analisar Copy'}</>
+                        }
+                      </button>
+                      <button
+                        onClick={() => handleGenerateCopySuggestions()}
+                        disabled={isGeneratingCopySuggestions || !hasCopy}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          padding: '0 12px',
+                          height: 32,
+                          borderRadius: 6,
+                          background: 'transparent',
+                          border: '1px solid var(--border-base)',
+                          color: isGeneratingCopySuggestions || !hasCopy ? 'var(--fg-muted)' : 'var(--fg-base)',
+                          fontSize: '0.78rem',
+                          fontWeight: 600,
+                          cursor: isGeneratingCopySuggestions || !hasCopy ? 'not-allowed' : 'pointer',
+                          opacity: isGeneratingCopySuggestions || !hasCopy ? 0.7 : 1,
+                        }}
+                      >
+                        {isGeneratingCopySuggestions
+                          ? <><RefreshCw size={13} style={{ animation: 'spin 1s linear infinite' }} /> Gerando...</>
+                          : <><Sparkles size={13} /> Mudanças Possíveis</>
+                        }
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Error */}
+                  {copyAnalysisError && (
+                    <div style={{ padding: '10px 14px', background: 'var(--danger-bg)', borderTop: '1px solid var(--danger-border)', fontSize: '0.8rem', color: 'var(--danger)', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                      {copyAnalysisError}
+                    </div>
+                  )}
+                  {copySuggestionsError && (
+                    <div style={{ padding: '10px 14px', background: 'var(--danger-bg)', borderTop: '1px solid var(--danger-border)', fontSize: '0.8rem', color: 'var(--danger)', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                      {copySuggestionsError}
+                    </div>
+                  )}
+
+                  {/* Saved analysis */}
+                  {savedCopyAnalysis && !isAnalyzingCopy && (
+                    <div style={{ padding: '14px 16px', background: 'var(--bg-subtle)' }}>
+                      {renderAnalysisText(savedCopyAnalysis.text)}
+                    </div>
+                  )}
+
+                  {/* Empty state */}
+                  {!savedCopyAnalysis && !isAnalyzingCopy && !copyAnalysisError && (
+                    <div style={{ padding: '16px', textAlign: 'center', color: 'var(--fg-muted)', fontSize: '0.8rem' }}>
+                      {hasCopy
+                        ? 'Clique em "Analisar Copy" para gerar uma avaliação textual detalhada deste anúncio.'
+                        : 'Sem copy disponível neste anúncio para análise automática.'
+                      }
+                    </div>
+                  )}
+                  {savedCopySuggestions && !isGeneratingCopySuggestions && (
+                    <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border-base)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, background: 'var(--bg-subtle)' }}>
+                      <div style={{ fontSize: '0.74rem', color: 'var(--fg-muted)' }}>
+                        {savedCopySuggestions.suggestions.length} mudanças possíveis salvas · {new Date(savedCopySuggestions.analyzedAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
+                      </div>
+                      <button
+                        onClick={() => setIsCopySuggestionsModalOpen(true)}
+                        style={{
+                          border: '1px solid var(--border-base)',
+                          background: 'var(--bg-component)',
+                          color: 'var(--fg-base)',
+                          borderRadius: 6,
+                          height: 30,
+                          padding: '0 10px',
+                          fontSize: '0.74rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Ver mudanças
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
+
+      {isCopySuggestionsModalOpen && savedCopySuggestions && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 260,
+            background: 'rgba(8,10,15,0.82)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px 14px',
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget) setIsCopySuggestionsModalOpen(false); }}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: 900,
+              maxHeight: '90vh',
+              overflow: 'hidden',
+              background: 'var(--bg-component)',
+              border: '1px solid var(--border-base)',
+              borderRadius: 'var(--radius-lg)',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 30px 70px rgba(0,0,0,0.5)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: '1px solid var(--border-base)' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--fg-base)' }}>Mudanças Possíveis de Copy</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--fg-muted)', marginTop: 3 }}>
+                  {savedCopySuggestions.suggestions.length} variações geradas com {savedCopySuggestions.provider} · {new Date(savedCopySuggestions.analyzedAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
+                </div>
+              </div>
+              <button
+                onClick={() => handleGenerateCopySuggestions({ forceRegenerate: true })}
+                disabled={isGeneratingCopySuggestions}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  border: '1px solid var(--border-base)',
+                  background: 'transparent',
+                  color: 'var(--fg-base)',
+                  borderRadius: 6,
+                  height: 32,
+                  padding: '0 10px',
+                  fontSize: '0.74rem',
+                  fontWeight: 600,
+                  cursor: isGeneratingCopySuggestions ? 'not-allowed' : 'pointer',
+                  opacity: isGeneratingCopySuggestions ? 0.7 : 1,
+                }}
+              >
+                {isGeneratingCopySuggestions
+                  ? <><RefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }} /> Gerando...</>
+                  : <><RefreshCw size={12} /> Gerar novamente</>
+                }
+              </button>
+              <button
+                onClick={() => setIsCopySuggestionsModalOpen(false)}
+                style={{ background: 'transparent', border: 'none', padding: 6, cursor: 'pointer', color: 'var(--fg-muted)', borderRadius: 6 }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ overflowY: 'auto', padding: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: 12 }}>
+                {savedCopySuggestions.suggestions.map((suggestion, index) => (
+                  <div key={`${suggestion.headline}-${index}`} style={{ border: '1px solid var(--border-base)', background: 'var(--bg-subtle)', borderRadius: 10, padding: '12px 12px 10px' }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.65rem', color: 'var(--accent-primary)', fontWeight: 700, marginBottom: 8 }}>
+                      <Sparkles size={11} /> Variação {index + 1}
+                    </div>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--fg-base)', marginBottom: 6, lineHeight: 1.35 }}>
+                      {suggestion.headline}
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--fg-subtle)', lineHeight: 1.55, whiteSpace: 'pre-wrap', marginBottom: 10 }}>
+                      {suggestion.copy}
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--fg-muted)', marginBottom: 4 }}>CTA sugerido</div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--fg-base)', fontWeight: 600, marginBottom: 8 }}>
+                      {suggestion.cta}
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--fg-muted)', marginBottom: 4 }}>Por que essa copy</div>
+                    <div style={{ fontSize: '0.76rem', color: 'var(--fg-subtle)', lineHeight: 1.45 }}>
+                      {suggestion.reason}
+                    </div>
+                    {suggestion.expectedImpact && (
+                      <>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--fg-muted)', marginTop: 8, marginBottom: 4 }}>Impacto esperado</div>
+                        <div style={{ fontSize: '0.74rem', color: 'var(--accent-primary)', lineHeight: 1.4 }}>
+                          {suggestion.expectedImpact}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -828,8 +1111,6 @@ export function CreativeGallery({ account, isLoading, campaignMode, clientProfil
   const rest = sorted.filter((a) => !['SCALE', 'PAUSE'].includes(a.ad.creativeScore?.recommendation || ''));
 
   const niche = clientProfile?.niche;
-  const product = clientProfile?.product;
-
   const makeItem = (entry: typeof sorted[0], rank: number): CardItem => ({
     ad: entry.ad,
     campaignName: entry.campaignName,
@@ -837,7 +1118,6 @@ export function CreativeGallery({ account, isLoading, campaignMode, clientProfil
     currency: account.currency,
     rank,
     niche,
-    product,
     aiConfig,
     mode: campaignMode,
   });

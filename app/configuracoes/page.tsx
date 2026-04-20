@@ -6,7 +6,8 @@ import { META_PERMISSION_INFO, CAMPAIGN_MODE_LABELS } from '@/lib/metaTypes';
 import type { MetaPermission } from '@/lib/metaTypes';
 import type { AIProvider } from '@/lib/aiClient';
 import { PROVIDER_LABELS, MODEL_OPTIONS } from '@/lib/aiClient';
-import { Sun, Moon, Zap, Lock } from 'lucide-react';
+import { useState } from 'react';
+import { Sun, Moon, Zap, Eye, EyeOff } from 'lucide-react';
 import type { Theme } from '@/app/providers';
 
 export default function ConfiguracoesPage() {
@@ -27,6 +28,8 @@ export default function ConfiguracoesPage() {
     isLoading,
   } = useApp();
   const router = useRouter();
+  const [showMetaToken, setShowMetaToken] = useState(false);
+  const [showAiApiKey, setShowAiApiKey] = useState(false);
 
   return (
     <div style={{ maxWidth: 640, display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -115,13 +118,40 @@ export default function ConfiguracoesPage() {
 
         <div className="form-group">
           <label>Access Token</label>
-          <input
-            type="password"
-            className="form-input"
-            placeholder="EAAG..."
-            value={metaAccessToken}
-            onChange={(e) => setMetaAccessToken(e.target.value)}
-          />
+          <div style={{ position: 'relative' }}>
+            <input
+              type={showMetaToken ? 'text' : 'password'}
+              className="form-input"
+              placeholder="EAAG..."
+              value={metaAccessToken}
+              onChange={(e) => setMetaAccessToken(e.target.value)}
+              style={{ paddingRight: 40 }}
+            />
+            <button
+              type="button"
+              aria-label={showMetaToken ? 'Ocultar access token' : 'Mostrar access token'}
+              title={showMetaToken ? 'Ocultar' : 'Mostrar'}
+              onClick={() => setShowMetaToken((v) => !v)}
+              style={{
+                position: 'absolute',
+                right: 6,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                width: 28,
+                height: 28,
+                padding: 0,
+                border: 'none',
+                background: 'transparent',
+                color: 'var(--fg-muted)',
+                borderRadius: 6,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              {showMetaToken ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </div>
           <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: 6 }}>
             <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noreferrer">Meta Graph API Explorer</a>
             {' → permissões: '}
@@ -211,13 +241,40 @@ export default function ConfiguracoesPage() {
         {aiProvider !== 'demo' && (
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label>API Key — {PROVIDER_LABELS[aiProvider]} <span style={{ color: 'var(--danger)' }}>*</span></label>
-            <input
-              type="password"
-              className="form-input"
-              placeholder={aiProvider === 'gemini' ? 'AIzaSy...' : aiProvider === 'openrouter' ? 'sk-or-v1-...' : aiProvider === 'openai' ? 'sk-...' : 'sk-ant-...'}
-              value={aiApiKeys[aiProvider] || ''}
-              onChange={(e) => saveAiKey(aiProvider, e.target.value)}
-            />
+            <div style={{ position: 'relative' }}>
+              <input
+                type={showAiApiKey ? 'text' : 'password'}
+                className="form-input"
+                placeholder={aiProvider === 'gemini' ? 'AIzaSy...' : aiProvider === 'openrouter' ? 'sk-or-v1-...' : aiProvider === 'openai' ? 'sk-...' : 'sk-ant-...'}
+                value={aiApiKeys[aiProvider] || ''}
+                onChange={(e) => saveAiKey(aiProvider, e.target.value)}
+                style={{ paddingRight: 40 }}
+              />
+              <button
+                type="button"
+                aria-label={showAiApiKey ? 'Ocultar API key' : 'Mostrar API key'}
+                title={showAiApiKey ? 'Ocultar' : 'Mostrar'}
+                onClick={() => setShowAiApiKey((v) => !v)}
+                style={{
+                  position: 'absolute',
+                  right: 6,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  width: 28,
+                  height: 28,
+                  padding: 0,
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'var(--fg-muted)',
+                  borderRadius: 6,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {showAiApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
             {aiApiKeys[aiProvider] && (
               <div style={{ marginTop: 8, padding: '7px 10px', background: 'var(--success-bg)', borderRadius: 6, fontSize: '0.775rem', color: 'var(--success)', border: '1px solid var(--success-border)' }}>
                 ✓ Chave salva automaticamente

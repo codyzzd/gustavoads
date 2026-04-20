@@ -4,6 +4,7 @@ import type {
   Campaign,
   AdSet,
   Ad,
+  AdCreative,
   Insights,
   InsightsSummary,
   AdAccount,
@@ -49,6 +50,71 @@ function getActionValue(
     if (action) return parseFloat(action.value);
   }
   return 0;
+}
+
+function getSizeFromImageUrl(url: string | undefined): { width: number; height: number } | undefined {
+  if (!url) return undefined;
+  try {
+    const parsed = new URL(url);
+    const stp = parsed.searchParams.get('stp');
+    if (stp) {
+      const match = stp.match(/p(\d+)x(\d+)/i);
+      if (match) {
+        const width = Number.parseInt(match[1], 10);
+        const height = Number.parseInt(match[2], 10);
+        if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+          return { width, height };
+        }
+      }
+    }
+  } catch {
+    // ignore malformed URL
+  }
+  return undefined;
+}
+
+function isLikelyForcedSquareCrop(url: string | undefined): boolean {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    const stp = parsed.searchParams.get('stp') || '';
+    const hasCenterCrop = stp.includes('c0.5000x0.5000f');
+    if (!hasCenterCrop) return false;
+
+    const size = getSizeFromImageUrl(url);
+    if (!size) return false;
+    return size.width === size.height;
+  } catch {
+    return false;
+  }
+}
+
+function isLikelyTinyCreativePreview(url: string | undefined): boolean {
+  const size = getSizeFromImageUrl(url);
+  if (!size) return false;
+
+  const minSide = Math.min(size.width, size.height);
+  const ratio = size.width / size.height;
+  return minSide <= 120 || ratio >= 8 || ratio <= 0.125;
+}
+
+function scoreAdImageCandidate(image: { width?: number; height?: number }): number {
+  const w = image.width || 0;
+  const h = image.height || 0;
+  if (w <= 0 || h <= 0) return 0;
+
+  const ratio = w / h;
+  const area = w * h;
+  const minSide = Math.min(w, h);
+
+  let score = Math.log2(area);
+  score += Math.log2(minSide);
+  score -= Math.abs(Math.log(ratio)) * 2.2;
+
+  if (ratio > 5 || ratio < 0.2) score -= 8;
+  else if (ratio > 3 || ratio < 0.333) score -= 3;
+
+  return score;
 }
 
 // ---- Summarize raw insights ----
@@ -428,17 +494,50 @@ export class MetaAdsClient {
       return { ...ad, adFormat, insightsSummary, creativeScore: scoreCreative(ad, insightsSummary, mode) };
     });
 
-    // Second pass: fetch high-res images for ALL creatives via the direct /{creative_id}
-    // endpoint. Inline creative{image_url/thumbnail_url} expansion never respects
-    // thumbnail_width/thumbnail_height — only the direct endpoint does.
+    // Second pass: fetch image + copy text for ALL creatives via the direct /{creative_id}
+    // endpoint. Reasons:
+    // 1. image_url/thumbnail_url from inline expansion are low-res — direct endpoint
+    //    respects thumbnail_width.
+    // 2. body/title often return empty from inline expansion for modern ads. The actual
+    //    copy lives in object_story_spec.link_data.{message,name} — this field silently
+    //    breaks inline creative{} expansion but works fine on the direct endpoint.
     const adsWithCreative = ads.filter((ad) => !!ad.creative?.id);
 
     if (adsWithCreative.length > 0) {
       await Promise.all(
         adsWithCreative.map(async (ad) => {
-          const url = await this.getCreativeThumbnail(ad.creative!.id);
-          if (url && ad.creative) {
-            ad.creative.thumbnail_url = url;
+          const data = await this.getCreativeDetails(ad.creative!.id);
+          if (!ad.creative) return;
+          if (data.image_url || data.thumbnail_url) {
+            ad.creative.image_url     = data.image_url     || ad.creative.image_url;
+            ad.creative.thumbnail_url = data.thumbnail_url || ad.creative.thumbnail_url;
+          }
+          if (data.body)  ad.creative.body  = data.body;
+          if (data.title) ad.creative.title = data.title;
+          if (data.object_story_spec) ad.creative.object_story_spec = data.object_story_spec;
+          if (data.asset_feed_spec) ad.creative.asset_feed_spec = data.asset_feed_spec;
+
+          const currentPreview =
+            ad.creative.image_url ||
+            ad.creative.thumbnail_url ||
+            ad.creative.picture ||
+            ad.creative.object_story_spec?.link_data?.picture;
+
+          const candidateHashes = [
+            ad.creative.image_hash,
+            ...(ad.creative.asset_feed_spec?.images || []).map((image) => image.hash),
+          ].filter((hash): hash is string => !!hash);
+
+          if (
+            candidateHashes.length > 0 &&
+            (
+              !currentPreview ||
+              isLikelyTinyCreativePreview(currentPreview) ||
+              isLikelyForcedSquareCrop(currentPreview)
+            )
+          ) {
+            const hashUrl = await this.getBestAdImageUrlByHashes(candidateHashes);
+            if (hashUrl) ad.creative.image_url = hashUrl;
           }
         })
       );
@@ -447,26 +546,88 @@ export class MetaAdsClient {
     return ads;
   }
 
-  // Fetch thumbnail/image for a creative via the adcreatives endpoint
-  async getCreativeThumbnail(creativeId: string): Promise<string | undefined> {
+  // Fetch image + copy from the direct /adcreatives/{id} endpoint.
+  // object_story_spec is safe here (direct endpoint) even though it breaks inline expansion.
+  async getCreativeDetails(creativeId: string): Promise<{
+    image_url?: string;
+    thumbnail_url?: string;
+    body?: string;
+    title?: string;
+    object_story_spec?: AdCreative['object_story_spec'];
+    asset_feed_spec?: AdCreative['asset_feed_spec'];
+  }> {
     try {
-      // Only request fields confirmed safe — `picture` and `effective_object_story_spec`
-      // cause the API to return empty responses for many ad types.
-      // Prefer image_url — it's the original uploaded asset with native proportions.
-      // For thumbnail_url (video ads), request only thumbnail_width without height so
-      // Meta generates the thumbnail at 1080px wide preserving the original aspect ratio.
-      // Specifying both width AND height forces Meta to crop to exactly those dimensions.
-      const res = await this.fetch<{
-        thumbnail_url?: string;
+      return await this.fetch<{
         image_url?: string;
+        thumbnail_url?: string;
+        body?: string;
+        title?: string;
+        object_story_spec?: AdCreative['object_story_spec'];
+        asset_feed_spec?: AdCreative['asset_feed_spec'];
       }>(`${creativeId}`, {
-        fields: 'thumbnail_url,image_url',
+        fields: 'image_url,thumbnail_url,body,title,object_story_spec,asset_feed_spec',
         thumbnail_width: '1080',
       });
-      return res.image_url || res.thumbnail_url;
+    } catch {
+      // Some ad accounts reject optional story/feed fields for specific creative types.
+      // Fallback to the minimal, widely supported image/copy fields instead of dropping preview entirely.
+      try {
+        return await this.fetch<{
+          image_url?: string;
+          thumbnail_url?: string;
+          body?: string;
+          title?: string;
+        }>(`${creativeId}`, {
+          fields: 'image_url,thumbnail_url,body,title',
+          thumbnail_width: '1080',
+        });
+      } catch {
+        return {};
+      }
+    }
+  }
+
+  async getBestAdImageUrlByHashes(imageHashes: string[]): Promise<string | undefined> {
+    const accountId = this.config.adAccountId.replace('act_', '');
+    const uniqueHashes = [...new Set(imageHashes.filter(Boolean))];
+    if (uniqueHashes.length === 0) return undefined;
+
+    try {
+      const response = await this.fetch<MetaApiResponse<{ hash?: string; url?: string; width?: number; height?: number }>>(`act_${accountId}/adimages`, {
+        fields: 'hash,url,width,height',
+        hashes: JSON.stringify(uniqueHashes.slice(0, 100)),
+        limit: '100',
+      });
+
+      const images = (response.data || []).filter((image) => !!image.url);
+      if (images.length === 0) return undefined;
+
+      let best = images[0];
+      let bestScore = scoreAdImageCandidate(best);
+
+      for (let i = 1; i < images.length; i += 1) {
+        const image = images[i];
+        const score = scoreAdImageCandidate(image);
+        if (score > bestScore) {
+          best = image;
+          bestScore = score;
+        }
+      }
+
+      return best.url;
     } catch {
       return undefined;
     }
+  }
+
+  async getAdImageUrlByHash(imageHash: string): Promise<string | undefined> {
+    return this.getBestAdImageUrlByHashes([imageHash]);
+  }
+
+  /** @deprecated use getCreativeDetails */
+  async getCreativeThumbnail(creativeId: string): Promise<string | undefined> {
+    const d = await this.getCreativeDetails(creativeId);
+    return d.image_url || d.thumbnail_url;
   }
 
   async getFullAccountSnapshot(datePreset: DatePreset = 'last_30d', mode: CampaignMode = 'ecommerce'): Promise<AdAccount> {

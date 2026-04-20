@@ -156,6 +156,13 @@ export interface AdCreative {
       link?: string;
       picture?: string;
       call_to_action?: { type: string };
+      child_attachments?: Array<{
+        name?: string;
+        description?: string;
+        link?: string;
+        picture?: string;
+        call_to_action?: { type: string };
+      }>;
     };
     video_data?: {
       message?: string;
@@ -174,25 +181,159 @@ export interface AdCreative {
   };
 }
 
+type CreativeImageSource =
+  | 'image_url'
+  | 'feed_image'
+  | 'child_attachment'
+  | 'video_preview'
+  | 'thumbnail_url'
+  | 'link_picture'
+  | 'picture'
+  | 'feed_video_thumb';
+
+type CreativeImageCandidate = {
+  url: string;
+  source: CreativeImageSource;
+};
+
+function parseCandidateSize(url: string): { width: number; height: number } | undefined {
+  try {
+    const parsed = new URL(url);
+    const stp = parsed.searchParams.get('stp');
+    if (stp) {
+      const match = stp.match(/p(\d+)x(\d+)/i);
+      if (match) {
+        const width = Number.parseInt(match[1], 10);
+        const height = Number.parseInt(match[2], 10);
+        if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+          return { width, height };
+        }
+      }
+    }
+
+    const w = parsed.searchParams.get('w');
+    const h = parsed.searchParams.get('h');
+    if (w && h) {
+      const width = Number.parseInt(w, 10);
+      const height = Number.parseInt(h, 10);
+      if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+        return { width, height };
+      }
+    }
+  } catch {
+    // ignore malformed URLs
+  }
+  return undefined;
+}
+
+function getStpParam(url: string): string {
+  try {
+    return new URL(url).searchParams.get('stp') || '';
+  } catch {
+    return '';
+  }
+}
+
+function getCandidateScore(candidate: CreativeImageCandidate, isLikelyVideo: boolean): number {
+  const sourceBase: Record<CreativeImageSource, number> = {
+    image_url: 100,
+    feed_image: 95,
+    child_attachment: 92,
+    video_preview: 86,
+    thumbnail_url: 80,
+    link_picture: 72,
+    picture: 68,
+    feed_video_thumb: 62,
+  };
+
+  let score = sourceBase[candidate.source];
+  const size = parseCandidateSize(candidate.url);
+
+  if (size) {
+    const minSide = Math.min(size.width, size.height);
+    const ratio = size.width / size.height;
+
+    score += Math.min(25, Math.log2(Math.max(minSide, 1)) * 4);
+
+    if (minSide < 120) score -= 30;
+    else if (minSide < 180) score -= 12;
+
+    if (ratio > 8 || ratio < 0.125) score -= 20;
+    else if (ratio > 5 || ratio < 0.2) score -= 10;
+  }
+
+  const stp = getStpParam(candidate.url);
+  const looksCenterCroppedSquare =
+    !!stp &&
+    stp.includes('c0.5000x0.5000f') &&
+    !!size &&
+    size.width === size.height;
+  if (looksCenterCroppedSquare && !isLikelyVideo) score -= 16;
+
+  if (isLikelyVideo) {
+    if (candidate.source === 'video_preview' || candidate.source === 'thumbnail_url' || candidate.source === 'feed_video_thumb') {
+      score += 8;
+    }
+  } else if (candidate.source === 'feed_video_thumb') {
+    score -= 8;
+  }
+
+  return score;
+}
+
+function pickBestCreativeImage(candidates: CreativeImageCandidate[], isLikelyVideo: boolean): string | undefined {
+  if (candidates.length === 0) return undefined;
+
+  const unique: CreativeImageCandidate[] = [];
+  const seen = new Set<string>();
+  for (const c of candidates) {
+    if (!c.url || seen.has(c.url)) continue;
+    seen.add(c.url);
+    unique.push(c);
+  }
+  if (unique.length === 0) return undefined;
+
+  let best = unique[0];
+  let bestScore = getCandidateScore(best, isLikelyVideo);
+
+  for (let i = 1; i < unique.length; i += 1) {
+    const candidate = unique[i];
+    const score = getCandidateScore(candidate, isLikelyVideo);
+    if (score > bestScore) {
+      best = candidate;
+      bestScore = score;
+    }
+  }
+
+  return best.url;
+}
+
 export function getCreativeImageUrl(creative: AdCreative | undefined): string | undefined {
   if (!creative) return undefined;
-  // image_url preserves native aspect ratio. thumbnail_url is fallback for video ads.
-  if (creative.image_url) return creative.image_url;
-  if (creative.thumbnail_url) return creative.thumbnail_url;
-  if (creative.picture) return creative.picture;
-  const linkPic = creative.effective_object_story_spec?.link_data?.picture;
-  if (linkPic) return linkPic;
-  const vidThumb = creative.effective_object_story_spec?.video_data?.image_url;
-  if (vidThumb) return vidThumb;
-  const osPic = creative.object_story_spec?.link_data?.picture;
-  if (osPic) return osPic;
-  const osVidThumb = creative.object_story_spec?.video_data?.image_url;
-  if (osVidThumb) return osVidThumb;
-  const feedImg = creative.asset_feed_spec?.images?.[0]?.url;
-  if (feedImg) return feedImg;
-  const feedVidThumb = creative.asset_feed_spec?.videos?.[0]?.thumbnail_url;
-  if (feedVidThumb) return feedVidThumb;
-  return undefined;
+  const candidates: CreativeImageCandidate[] = [];
+  const push = (url: string | undefined, source: CreativeImageSource) => {
+    if (url) candidates.push({ url, source });
+  };
+
+  push(creative.image_url, 'image_url');
+  push(creative.thumbnail_url, 'thumbnail_url');
+  push(creative.picture, 'picture');
+
+  const effLink = creative.effective_object_story_spec?.link_data;
+  for (const child of effLink?.child_attachments || []) push(child.picture, 'child_attachment');
+  push(effLink?.picture, 'link_picture');
+  push(creative.effective_object_story_spec?.video_data?.image_url, 'video_preview');
+
+  const osLink = creative.object_story_spec?.link_data;
+  for (const child of osLink?.child_attachments || []) push(child.picture, 'child_attachment');
+  push(osLink?.picture, 'link_picture');
+  push(creative.object_story_spec?.video_data?.image_url, 'video_preview');
+
+  for (const image of creative.asset_feed_spec?.images || []) push(image.url, 'feed_image');
+  for (const video of creative.asset_feed_spec?.videos || []) push(video.thumbnail_url, 'feed_video_thumb');
+
+  const isLikelyVideo = creative.object_type === 'VIDEO' || !!creative.video_id;
+  return pickBestCreativeImage(candidates, isLikelyVideo);
 }
 
 export function getCreativeBody(creative: AdCreative | undefined): string {
@@ -216,6 +357,19 @@ export function getCreativeTitle(creative: AdCreative | undefined): string {
   if (vidTitle) return vidTitle;
   const feedTitle = creative.asset_feed_spec?.titles?.[0]?.text;
   if (feedTitle) return feedTitle;
+  return '';
+}
+
+export function getCreativeCaption(creative: AdCreative | undefined): string {
+  if (!creative) return '';
+  const linkDesc = creative.effective_object_story_spec?.link_data?.description;
+  if (linkDesc) return linkDesc;
+  const videoDesc = creative.effective_object_story_spec?.video_data?.link_description;
+  if (videoDesc) return videoDesc;
+  const photoCaption = creative.effective_object_story_spec?.photo_data?.caption;
+  if (photoCaption) return photoCaption;
+  const feedDescription = creative.asset_feed_spec?.descriptions?.[0]?.text;
+  if (feedDescription) return feedDescription;
   return '';
 }
 
