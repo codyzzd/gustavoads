@@ -221,25 +221,27 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
 
-        {/* Error banner */}
-        {syncError && (
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 10,
-            padding: '10px 14px', marginBottom: 16,
-            background: 'var(--danger-bg)', border: '1px solid var(--danger-border)', borderRadius: 8,
-          }}>
-            <AlertCircle size={15} color="var(--danger)" />
-            <span style={{ fontSize: '0.8125rem', color: 'var(--danger)', flex: 1 }}>{syncError}</span>
-            <button
-              onClick={() => setSyncError(null)}
-              style={{ background: 'transparent', border: 'none', padding: 4, cursor: 'pointer', color: 'var(--fg-muted)', height: 'auto' }}
-            >
-              <X size={13} />
-            </button>
-          </div>
-        )}
+        <main className="page-content">
+          {/* Error banner */}
+          {syncError && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '10px 14px', marginBottom: 16,
+              background: 'var(--danger-bg)', border: '1px solid var(--danger-border)', borderRadius: 8,
+            }}>
+              <AlertCircle size={15} color="var(--danger)" />
+              <span style={{ fontSize: '0.8125rem', color: 'var(--danger)', flex: 1 }}>{syncError}</span>
+              <button
+                onClick={() => setSyncError(null)}
+                style={{ background: 'transparent', border: 'none', padding: 4, cursor: 'pointer', color: 'var(--fg-muted)', height: 'auto' }}
+              >
+                <X size={13} />
+              </button>
+            </div>
+          )}
 
-        {children}
+          {children}
+        </main>
       </div>
     </div>
   );

@@ -276,6 +276,19 @@ button:focus-visible {
   background: var(--bg-base);
 }
 
+.page-content {
+  width: min(100%, 1180px);
+  margin-inline: auto;
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.page-content > * {
+  width: 100%;
+  margin-inline: auto;
+}
+
 /* Header */
 .header {
   display: flex;
