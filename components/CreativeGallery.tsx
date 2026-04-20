@@ -302,176 +302,185 @@ function CreativeCard({
   return (
     <div
       className="creative-card glass-panel"
-      style={{ position: 'relative', overflow: 'hidden', border: score.recommendation === 'PAUSE' ? '1px solid rgba(255,51,102,0.3)' : score.recommendation === 'SCALE' ? '1px solid rgba(0,255,157,0.3)' : undefined }}
+      style={{
+        position: 'relative',
+        border: score.recommendation === 'PAUSE'
+          ? '1px solid var(--danger-border)'
+          : score.recommendation === 'SCALE'
+          ? '1px solid var(--success-border)'
+          : undefined,
+        padding: 0,
+        overflow: 'hidden',
+      }}
     >
-      {/* Rank badge */}
-      <div style={{ position: 'absolute', top: 14, left: 14, width: 28, height: 28, borderRadius: '50%', background: 'var(--bg-primary)', border: '1px solid var(--glass-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>
-        #{rank}
-      </div>
+      {/* ── Top row: image + main info ── */}
+      <div style={{ display: 'flex', gap: 0 }}>
 
-      {/* Format badge */}
-      {ad.adFormat && ad.adFormat !== 'UNKNOWN' && (
-        <div style={{ position: 'absolute', top: 14, left: 50, display: 'flex', alignItems: 'center', gap: 4, background: 'var(--bg-primary)', border: '1px solid var(--glass-border)', borderRadius: 20, padding: '2px 7px', fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-          {ad.adFormat === 'VIDEO'    && <><Video size={10} /> VIDEO</>}
-          {ad.adFormat === 'IMAGE'    && <><Image size={10} /> IMAGEM</>}
-          {ad.adFormat === 'CAROUSEL' && <><Layers size={10} /> CARROSSEL</>}
-          {ad.adFormat === 'DYNAMIC'  && <><Zap size={10} /> DINÂMICO</>}
-        </div>
-      )}
-
-      {/* Score ring */}
-      <div style={{
-        position: 'absolute', top: 14, right: 14,
-        width: 52, height: 52, borderRadius: '50%',
-        background: `conic-gradient(${overallColor} ${score.overall * 3.6}deg, var(--bg-tertiary) 0deg)`,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}>
-        <div style={{
-          width: 38, height: 38, borderRadius: '50%',
-          background: 'var(--bg-secondary)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '0.85rem', fontWeight: 700, color: overallColor,
-        }}>
-          {score.overall}
-        </div>
-      </div>
-
-      {/* Thumbnail — resolved from any creative source */}
-      {imageUrl ? (
-        <div style={{ width: '100%', height: 130, borderRadius: 8, marginBottom: 14, marginTop: 4, background: 'var(--bg-tertiary)', overflow: 'hidden', position: 'relative' }}>
-          <img
-            src={imageUrl}
-            alt={ad.name}
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            onError={(e) => {
-              const t = e.target as HTMLImageElement;
-              t.style.display = 'none';
-              if (t.parentElement) t.parentElement.style.background = 'var(--bg-tertiary)';
-            }}
-          />
+        {/* Thumbnail */}
+        <div style={{ width: 200, flexShrink: 0, position: 'relative', background: 'var(--bg-tertiary)', minHeight: 160 }}>
+          {imageUrl ? (
+            <img
+              src={imageUrl}
+              alt={ad.name}
+              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', minHeight: 160 }}
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+            />
+          ) : (
+            <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 4 }}>
+              <Image size={24} color="var(--text-muted)" />
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Sem prévia</span>
+            </div>
+          )}
           {ad.adFormat === 'VIDEO' && (
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.25)' }}>
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.3)' }}>
               <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(255,255,255,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Video size={18} color="#000" />
               </div>
             </div>
           )}
-        </div>
-      ) : (
-        <div style={{ width: '100%', height: 80, borderRadius: 8, marginBottom: 14, marginTop: 4, background: 'var(--bg-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 4 }}>
-          <Image size={24} color="var(--text-muted)" />
-          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Sem prévia disponível</span>
-        </div>
-      )}
-
-      {/* Name + path */}
-      <div style={{ fontWeight: 600, fontSize: '0.88rem', marginBottom: 3, paddingRight: 60, lineHeight: 1.3 }}>{ad.name}</div>
-      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 6, paddingRight: 60 }}>
-        {campaignName} · {adsetName}
-      </div>
-
-      {/* Copy preview */}
-      {(titleText || bodyText) && (
-        <div style={{ background: 'var(--bg-primary)', borderRadius: 8, padding: '8px 10px', marginBottom: 10, fontSize: '0.78rem' }}>
-          {titleText && <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: 3, lineHeight: 1.3 }}>{titleText.slice(0, 80)}{titleText.length > 80 ? '…' : ''}</div>}
-          {bodyText && <div style={{ color: 'var(--text-muted)', lineHeight: 1.4 }}>{bodyText.slice(0, 120)}{bodyText.length > 120 ? '…' : ''}</div>}
-        </div>
-      )}
-
-      {/* Status */}
-      <div style={{ marginBottom: 12 }}>
-        <span style={{
-          fontSize: '0.72rem', fontWeight: 600,
-          color: ad.status === 'ACTIVE' ? 'var(--success)' : 'var(--text-muted)',
-          background: ad.status === 'ACTIVE' ? 'rgba(0,255,157,0.1)' : 'rgba(98,103,133,0.15)',
-          padding: '2px 8px', borderRadius: 20,
-        }}>
-          {ad.status === 'ACTIVE' ? '● Ativo' : ad.status}
-        </span>
-      </div>
-
-      {/* Score bars */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginBottom: 14 }}>
-        {[
-          { label: 'Hook/CTR', score: score.hookScore, color: 'var(--accent-primary)' },
-          { label: 'Performance', score: score.performanceScore, color: 'var(--accent-secondary)' },
-          { label: 'Copy', score: score.copyScore, color: 'var(--warning)' },
-        ].map((bar) => (
-          <div key={bar.label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', width: 80, flexShrink: 0 }}>{bar.label}</span>
-            <ScoreBar score={bar.score} color={bar.color} />
-            <span style={{ fontSize: '0.72rem', color: bar.color, width: 26, textAlign: 'right', flexShrink: 0 }}>{bar.score}</span>
+          {/* Rank + format badges */}
+          <div style={{ position: 'absolute', top: 8, left: 8, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+            <span style={{ background: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: '0.65rem', fontWeight: 700, padding: '2px 6px', borderRadius: 4 }}>#{rank}</span>
+            {ad.adFormat && ad.adFormat !== 'UNKNOWN' && (
+              <span style={{ background: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: '0.62rem', fontWeight: 600, padding: '2px 6px', borderRadius: 4, display: 'flex', alignItems: 'center', gap: 3 }}>
+                {ad.adFormat === 'VIDEO' && <><Film size={9} />VID</>}
+                {ad.adFormat === 'IMAGE' && <><Image size={9} />IMG</>}
+                {ad.adFormat === 'CAROUSEL' && <><Layers size={9} />CAR</>}
+                {ad.adFormat === 'DYNAMIC' && <><Zap size={9} />DIN</>}
+              </span>
+            )}
           </div>
-        ))}
-      </div>
-
-      {/* Metrics grid */}
-      {ins && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 14 }}>
-          {[
-            { label: 'CTR', value: `${ins.ctr.toFixed(2)}%`, icon: MousePointer },
-            { label: 'CPC', value: fmtCur(ins.cpc, currency), icon: Zap },
-            { label: primaryMetric.label, value: primaryMetric.value, icon: TrendingUp },
-            { label: 'Gasto', value: fmtCur(ins.spend, currency), icon: AlertTriangle },
-          ].map((m) => (
-            <div key={m.label} style={{ background: 'var(--bg-primary)', borderRadius: 8, padding: '7px 10px' }}>
-              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginBottom: 2 }}>{m.label}</div>
-              <div style={{ fontSize: '0.88rem', fontWeight: 700 }}>{m.value}</div>
-            </div>
-          ))}
         </div>
-      )}
 
-      {/* Fatigue + Recommendation */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Fadiga:</span>
-        <span style={{ fontSize: '0.78rem', fontWeight: 600, color: fatigue.color }}>{fatigue.label}</span>
+        {/* Main content */}
+        <div style={{ flex: 1, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
+
+          {/* Header row */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: '0.9rem', lineHeight: 1.3, marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ad.name}</div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{campaignName} · {adsetName}</div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+              <span style={{
+                fontSize: '0.7rem', fontWeight: 600,
+                color: ad.status === 'ACTIVE' ? 'var(--success)' : 'var(--text-muted)',
+                background: ad.status === 'ACTIVE' ? 'var(--success-bg)' : 'rgba(98,103,133,0.15)',
+                padding: '3px 8px', borderRadius: 20, border: ad.status === 'ACTIVE' ? '1px solid var(--success-border)' : 'none',
+              }}>
+                {ad.status === 'ACTIVE' ? '● Ativo' : ad.status}
+              </span>
+              {/* Score ring */}
+              <div style={{
+                width: 52, height: 52, borderRadius: '50%', flexShrink: 0,
+                background: `conic-gradient(${overallColor} ${score.overall * 3.6}deg, var(--bg-tertiary) 0deg)`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <div style={{
+                  width: 38, height: 38, borderRadius: '50%',
+                  background: 'var(--bg-secondary)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '0.85rem', fontWeight: 700, color: overallColor,
+                }}>
+                  {score.overall}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Copy preview */}
+          {(titleText || bodyText) && (
+            <div style={{ background: 'var(--bg-primary)', borderRadius: 7, padding: '7px 10px', fontSize: '0.78rem', flexShrink: 0 }}>
+              {titleText && <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: 2, lineHeight: 1.3 }}>{titleText.slice(0, 100)}{titleText.length > 100 ? '…' : ''}</div>}
+              {bodyText && <div style={{ color: 'var(--text-muted)', lineHeight: 1.4 }}>{bodyText.slice(0, 140)}{bodyText.length > 140 ? '…' : ''}</div>}
+            </div>
+          )}
+
+          {/* Metrics + score bars side by side */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            {/* Metrics */}
+            {ins && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                {[
+                  { label: 'CTR', value: `${ins.ctr.toFixed(2)}%` },
+                  { label: 'CPC', value: fmtCur(ins.cpc, currency) },
+                  { label: primaryMetric.label, value: primaryMetric.value },
+                  { label: 'Gasto', value: fmtCur(ins.spend, currency) },
+                ].map((m) => (
+                  <div key={m.label} style={{ background: 'var(--bg-primary)', borderRadius: 7, padding: '6px 10px' }}>
+                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: 2 }}>{m.label}</div>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 700 }}>{m.value}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Score bars + fatigue */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {[
+                { label: 'Hook/CTR', score: score.hookScore, color: 'var(--accent-primary)' },
+                { label: 'Perf.', score: score.performanceScore, color: 'var(--accent-secondary)' },
+                { label: 'Copy', score: score.copyScore, color: 'var(--warning)' },
+              ].map((bar) => (
+                <div key={bar.label} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', width: 56, flexShrink: 0 }}>{bar.label}</span>
+                  <ScoreBar score={bar.score} color={bar.color} />
+                  <span style={{ fontSize: '0.68rem', color: bar.color, width: 22, textAlign: 'right', flexShrink: 0 }}>{bar.score}</span>
+                </div>
+              ))}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', width: 56, flexShrink: 0 }}>Fadiga</span>
+                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: fatigue.color }}>{fatigue.label}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Recommendation + expand button */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{
+              flex: 1,
+              background: `${rec.color}15`, border: `1px solid ${rec.color}30`,
+              borderRadius: 7, padding: '7px 12px',
+              display: 'flex', alignItems: 'flex-start', gap: 8,
+            }}>
+              <div>
+                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: rec.color }}>{rec.label}</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: 1.4, marginTop: 2 }}>{score.recommendationText}</div>
+              </div>
+            </div>
+            <button
+              onClick={() => setExpanded(!expanded)}
+              style={{
+                flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5,
+                background: 'var(--accent-subtle)', border: '1px solid var(--accent-border)', borderRadius: 7,
+                padding: '7px 12px', cursor: 'pointer', fontSize: '0.75rem', color: 'var(--accent-primary)',
+                fontWeight: 600, transition: 'background 0.15s', whiteSpace: 'nowrap',
+              }}
+            >
+              <Lightbulb size={13} />
+              {expanded ? 'Ocultar' : 'Ver análise'}
+              {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+            </button>
+          </div>
+        </div>
       </div>
 
-      <div style={{
-        background: `${rec.color}15`,
-        border: `1px solid ${rec.color}35`,
-        borderRadius: 8, padding: '9px 12px', marginBottom: 12,
-      }}>
-        <div style={{ fontSize: '0.78rem', fontWeight: 600, color: rec.color, marginBottom: 3 }}>{rec.label}</div>
-        <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>{score.recommendationText}</div>
-      </div>
-
-      {/* Expand button for AI insights */}
-      <button
-        onClick={() => setExpanded(!expanded)}
-        style={{
-          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-          background: 'rgba(0,240,255,0.07)', border: '1px solid rgba(0,240,255,0.15)', borderRadius: 8,
-          padding: '8px 12px', cursor: 'pointer', fontSize: '0.78rem', color: 'var(--accent-primary)',
-          fontWeight: 600, transition: 'all 0.2s',
-        }}
-        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(0,240,255,0.14)'; }}
-        onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(0,240,255,0.07)'; }}
-      >
-        <Lightbulb size={14} />
-        {expanded ? 'Ocultar análise' : 'Ver análise + sugestões'}
-        {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-      </button>
-
-      {/* Expanded AI Analysis */}
+      {/* ── Expanded AI Analysis (full width below) ── */}
       {expanded && (
-        <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {/* Insights */}
+        <div style={{ borderTop: '1px solid var(--glass-border)', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12, background: 'var(--bg-primary)' }}>
           {insights.length > 0 && (
-            <div style={{ background: 'var(--bg-primary)', borderRadius: 10, padding: '12px 14px' }}>
+            <div style={{ background: 'var(--bg-secondary)', borderRadius: 10, padding: '12px 14px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
                 <Eye size={13} /> DIAGNÓSTICO DO CRIATIVO
               </div>
-              {insights.map((ins, i) => (
-                <div key={i} style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 5, lineHeight: 1.5 }}>{ins}</div>
+              {insights.map((item, i) => (
+                <div key={i} style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 5, lineHeight: 1.5 }}>{item}</div>
               ))}
             </div>
           )}
 
-          {/* Improvements */}
           {improvements.length > 0 && (
-            <div style={{ background: 'rgba(255,184,0,0.07)', border: '1px solid rgba(255,184,0,0.2)', borderRadius: 10, padding: '12px 14px' }}>
+            <div style={{ background: 'var(--warning-bg)', border: '1px solid var(--warning-border)', borderRadius: 10, padding: '12px 14px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, fontSize: '0.78rem', fontWeight: 700, color: 'var(--warning)' }}>
                 <RefreshCw size={13} /> MELHORIAS RECOMENDADAS
               </div>
@@ -483,10 +492,9 @@ function CreativeCard({
             </div>
           )}
 
-          {/* New Creative Suggestion */}
           {newCreativeSuggestion && (
-            <div style={{ background: 'rgba(112,0,255,0.1)', border: '1px solid rgba(112,0,255,0.3)', borderRadius: 10, padding: '12px 14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, fontSize: '0.78rem', fontWeight: 700, color: 'var(--accent-secondary)' }}>
+            <div style={{ background: 'var(--accent-subtle)', border: '1px solid var(--accent-border)', borderRadius: 10, padding: '12px 14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, fontSize: '0.78rem', fontWeight: 700, color: 'var(--accent-primary)' }}>
                 <Film size={13} /> CRIATIVO DE SUBSTITUIÇÃO
               </div>
               <pre style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.6, whiteSpace: 'pre-wrap', margin: 0, fontFamily: 'inherit' }}>
@@ -495,9 +503,8 @@ function CreativeCard({
             </div>
           )}
 
-          {/* Niche-specific hooks */}
           {nicheHooks.length > 0 && (
-            <div style={{ background: 'rgba(0,240,255,0.05)', border: '1px solid rgba(0,240,255,0.15)', borderRadius: 10, padding: '12px 14px' }}>
+            <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-base)', borderRadius: 10, padding: '12px 14px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, fontSize: '0.78rem', fontWeight: 700, color: 'var(--accent-primary)' }}>
                 <Type size={13} /> HOOKS & ÂNGULOS PARA {(niche || 'SEU NICHO').toUpperCase()}
               </div>

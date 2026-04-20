@@ -394,13 +394,13 @@ export class MetaAdsClient {
       'video_play_actions', 'video_thruplay_watched_actions',
     ].join(',');
 
-    // Simplified creative fields — avoid invalid nested fields that cause API errors
     const creativeFields = [
       'id', 'name', 'title', 'body',
       'call_to_action_type',
       'object_type',
       'image_url',
       'thumbnail_url',
+      'picture',
       'image_hash',
       'video_id',
       'effective_object_story_spec{link_data{message,name,description,link,picture,call_to_action},video_data{message,title,image_url,video_id,call_to_action}}',
@@ -413,42 +413,67 @@ export class MetaAdsClient {
       limit: '50',
     });
 
-    // DEBUG: log raw response to see what Meta API actually returns
-    console.group('[ARIA] getAds raw response for adset:', adsetId);
-    (response.data || []).slice(0, 3).forEach((ad) => {
-      console.log('Ad:', ad.name, '| creative:', JSON.stringify(ad.creative, null, 2));
-    });
-    console.groupEnd();
-
-    return (response.data || []).map((ad) => {
+    const ads: Ad[] = (response.data || []).map((ad) => {
       const insightsSummary = ad.insights?.data ? summarizeInsights(ad.insights.data) : undefined;
 
-      // Detect format
       let adFormat: Ad['adFormat'] = 'UNKNOWN';
       const c = ad.creative;
       if (c) {
         if (c.asset_feed_spec) adFormat = 'DYNAMIC';
         else if (c.effective_object_story_spec?.link_data?.child_attachments?.length) adFormat = 'CAROUSEL';
         else if (c.video_id || c.effective_object_story_spec?.video_data || c.object_type === 'VIDEO') adFormat = 'VIDEO';
-        else if (c.image_url || c.image_hash || c.effective_object_story_spec?.link_data?.picture || c.object_type === 'IMAGE') adFormat = 'IMAGE';
+        else if (c.image_url || c.picture || c.image_hash || c.effective_object_story_spec?.link_data?.picture || c.object_type === 'IMAGE') adFormat = 'IMAGE';
       }
 
-      return {
-        ...ad,
-        adFormat,
-        insightsSummary,
-        creativeScore: scoreCreative(ad, insightsSummary, mode),
-      };
+      return { ...ad, adFormat, insightsSummary, creativeScore: scoreCreative(ad, insightsSummary, mode) };
     });
+
+    // Second pass: fetch thumbnails for ads where the initial query didn't return an image URL.
+    // The Meta API often omits image_url/thumbnail_url on the creative object itself —
+    // a direct call to /{creative_id} with specific fields is more reliable.
+    const missingImage = ads.filter((ad) => {
+      if (!ad.creative?.id) return false;
+      const c = ad.creative;
+      return !(
+        c.image_url || c.thumbnail_url || c.picture ||
+        c.effective_object_story_spec?.link_data?.picture ||
+        c.effective_object_story_spec?.video_data?.image_url ||
+        c.object_story_spec?.link_data?.picture
+      );
+    });
+
+    if (missingImage.length > 0) {
+      await Promise.all(
+        missingImage.map(async (ad) => {
+          const url = await this.getCreativeThumbnail(ad.creative!.id);
+          if (url && ad.creative) {
+            ad.creative.thumbnail_url = url;
+          }
+        })
+      );
+    }
+
+    return ads;
   }
 
-  // Fetch a preview thumbnail for a creative via the adcreatives endpoint
+  // Fetch thumbnail/image for a creative via the adcreatives endpoint
   async getCreativeThumbnail(creativeId: string): Promise<string | undefined> {
     try {
-      const res = await this.fetch<{ thumbnail_url?: string; image_url?: string }>(`${creativeId}`, {
-        fields: 'thumbnail_url,image_url,picture',
+      const res = await this.fetch<{
+        thumbnail_url?: string;
+        image_url?: string;
+        picture?: string;
+        effective_object_story_spec?: { link_data?: { picture?: string }; video_data?: { image_url?: string } };
+      }>(`${creativeId}`, {
+        fields: 'thumbnail_url,image_url,picture,effective_object_story_spec{link_data{picture},video_data{image_url}}',
       });
-      return res.thumbnail_url || res.image_url;
+      return (
+        res.thumbnail_url ||
+        res.image_url ||
+        res.picture ||
+        res.effective_object_story_spec?.link_data?.picture ||
+        res.effective_object_story_spec?.video_data?.image_url
+      );
     } catch {
       return undefined;
     }

@@ -115,6 +115,7 @@ export interface AdCreative {
   call_to_action_type?: string;
   image_url?: string;
   thumbnail_url?: string;
+  picture?: string;          // top-level picture field (returned by /adcreatives/{id})
   image_hash?: string;
   object_type?: string;
   video_id?: string;
@@ -177,6 +178,7 @@ export function getCreativeImageUrl(creative: AdCreative | undefined): string | 
   if (!creative) return undefined;
   if (creative.image_url) return creative.image_url;
   if (creative.thumbnail_url) return creative.thumbnail_url;
+  if (creative.picture) return creative.picture;
   const linkPic = creative.effective_object_story_spec?.link_data?.picture;
   if (linkPic) return linkPic;
   const vidThumb = creative.effective_object_story_spec?.video_data?.image_url;
@@ -331,6 +333,29 @@ export interface MetaApiResponse<T> {
 }
 
 export type TokenType = 'short' | 'long_lived' | 'system_user';
+
+/** Permissão efetiva do token Meta configurado */
+export type MetaPermission = 'readonly' | 'readwrite';
+
+export const META_PERMISSION_INFO: Record<MetaPermission, {
+  label: string;
+  description: string;
+  scopes: string[];
+  canWrite: boolean;
+}> = {
+  readonly: {
+    label: 'Somente Leitura',
+    description: 'Sincroniza e exibe dados. Não pode fazer alterações.',
+    scopes: ['ads_read', 'read_insights'],
+    canWrite: false,
+  },
+  readwrite: {
+    label: 'Leitura + Escrita',
+    description: 'Sincroniza dados e pode pausar anúncios, ajustar orçamentos e mais.',
+    scopes: ['ads_read', 'read_insights', 'ads_management'],
+    canWrite: true,
+  },
+};
 
 export interface MetaConfig {
   accessToken: string;
