@@ -317,12 +317,12 @@ function CreativeCard({
       <div style={{ display: 'flex', gap: 0 }}>
 
         {/* Thumbnail */}
-        <div style={{ width: 200, flexShrink: 0, position: 'relative', background: 'var(--bg-tertiary)', minHeight: 160 }}>
+        <div style={{ width: 200, flexShrink: 0, position: 'relative', background: 'var(--bg-base)', minHeight: 160, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {imageUrl ? (
             <img
               src={imageUrl}
               alt={ad.name}
-              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', minHeight: 160 }}
+              style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', minHeight: 160, maxHeight: 260 }}
               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
             />
           ) : (

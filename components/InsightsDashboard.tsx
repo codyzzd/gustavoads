@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import type { AdAccount, Campaign, CampaignMode, MetaPermission } from '@/lib/metaTypes';
-import { TrendingUp, TrendingDown, AlertTriangle, CheckCircle, Activity, DollarSign, MousePointer, Eye, Users, ShoppingCart, MessageCircle, Target, Play, X, Lock, ChevronRight, Pause, BarChart2, Zap, RefreshCw } from 'lucide-react';
+import { CreativeGallery } from '@/components/CreativeGallery';
+import { TrendingUp, TrendingDown, AlertTriangle, CheckCircle, Activity, DollarSign, MousePointer, Eye, Users, ShoppingCart, MessageCircle, Target, Play, X, Lock, ChevronRight, Pause, RefreshCw, Image } from 'lucide-react';
 
 interface InsightsDashboardProps {
   account: AdAccount | null;
@@ -153,6 +154,7 @@ function CampaignDiagnostic({
   canWrite: boolean;
   onClose: () => void;
 }) {
+  const [panelTab, setPanelTab] = useState<'diagnosis' | 'creatives'>('diagnosis');
   const ins = campaign.insightsSummary;
   const adsets = campaign.adsets || [];
   const allAds = adsets.flatMap((as) => (as.ads || []).map((ad) => ({ ad, adsetName: as.name })));
@@ -197,18 +199,33 @@ function CampaignDiagnostic({
     : level === 'warn' ? <AlertTriangle size={15} color="var(--warning)" style={{ flexShrink: 0 }} />
     : <AlertTriangle size={15} color="var(--danger)" style={{ flexShrink: 0 }} />;
 
+  // Build a mock AdAccount for CreativeGallery
+  const mockAccount = {
+    ...({} as import('@/lib/metaTypes').AdAccount),
+    id: 'panel',
+    name: campaign.name,
+    currency,
+    timezone_name: '',
+    account_status: 1,
+    campaigns: [campaign],
+  };
+
+  const allAdsCount = (campaign.adsets || []).flatMap((as) => as.ads || []).length;
+
   return (
     <div style={{
-      position: 'fixed', top: 0, right: 0, bottom: 0, width: 480,
+      position: 'fixed', top: 0, right: 0, bottom: 0,
+      width: panelTab === 'creatives' ? 'min(82vw, 1100px)' : 480,
       background: 'var(--bg-subtle)', borderLeft: '1px solid var(--border-base)',
       zIndex: 200, display: 'flex', flexDirection: 'column',
       boxShadow: '-8px 0 32px rgba(0,0,0,0.4)',
       animation: 'slideIn 0.2s ease',
+      transition: 'width 0.25s ease',
     }}>
       {/* Header */}
       <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--border-base)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexShrink: 0 }}>
-        <div style={{ minWidth: 0, paddingRight: 12 }}>
-          <div style={{ fontSize: '0.75rem', color: 'var(--fg-muted)', marginBottom: 3 }}>Diagnóstico de Campanha</div>
+        <div style={{ minWidth: 0, paddingRight: 12, flex: 1 }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--fg-muted)', marginBottom: 3 }}>Campanha</div>
           <div style={{ fontWeight: 700, fontSize: '0.95rem', lineHeight: 1.3, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
             {campaign.name}
           </div>
@@ -228,157 +245,159 @@ function CampaignDiagnostic({
         </button>
       </div>
 
+      {/* Tab switcher */}
+      <div style={{ display: 'flex', borderBottom: '1px solid var(--border-base)', flexShrink: 0, background: 'var(--bg-component)' }}>
+        {([
+          { key: 'diagnosis', label: 'Diagnóstico' },
+          { key: 'creatives', label: `Criativos${allAdsCount > 0 ? ` (${allAdsCount})` : ''}` },
+        ] as const).map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setPanelTab(key)}
+            style={{
+              flex: 1, padding: '10px 12px', background: 'transparent', border: 'none',
+              borderBottom: panelTab === key ? '2px solid var(--accent-primary)' : '2px solid transparent',
+              color: panelTab === key ? 'var(--accent-primary)' : 'var(--fg-muted)',
+              fontWeight: panelTab === key ? 700 : 500,
+              fontSize: '0.82rem', cursor: 'pointer', transition: 'all 0.15s',
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {/* Scrollable content */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: panelTab === 'creatives' ? '20px 24px' : '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-        {/* Diagnóstico */}
-        <div>
-          <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Diagnóstico</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-            {issues.map((issue, i) => (
-              <div key={i} style={{ display: 'flex', gap: 9, alignItems: 'flex-start', padding: '8px 10px', borderRadius: 7, background: issue.level === 'error' ? 'var(--danger-bg)' : issue.level === 'warn' ? 'var(--warning-bg)' : 'var(--success-bg)', border: `1px solid ${issue.level === 'error' ? 'var(--danger-border)' : issue.level === 'warn' ? 'var(--warning-border)' : 'var(--success-border)'}` }}>
-                {iconFor(issue.level)}
-                <span style={{ fontSize: '0.8rem', lineHeight: 1.45, color: issue.level === 'error' ? 'var(--danger)' : issue.level === 'warn' ? 'var(--warning)' : 'var(--success)' }}>{issue.msg}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Ações recomendadas */}
-        {(pauseableAds.length > 0 || scaleAds.length > 0) && (
-          <div>
-            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Ações Recomendadas</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {pauseableAds.map(({ ad }) => (
-                <div key={ad.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '8px 12px', borderRadius: 7, background: 'var(--bg-component)', border: '1px solid var(--border-base)' }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: '0.78rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ad.name}</div>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--danger)' }}>Score {ad.creativeScore?.overall}/100 · {ad.creativeScore?.fatigueLevel === 'CRITICAL' ? 'Fadiga crítica' : 'Performance baixa'}</div>
-                  </div>
-                  <ActionButton label="Pausar" icon={Pause} color="var(--danger)" canWrite={canWrite} danger />
-                </div>
-              ))}
-              {scaleAds.map(({ ad }) => (
-                <div key={ad.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '8px 12px', borderRadius: 7, background: 'var(--bg-component)', border: '1px solid var(--border-base)' }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: '0.78rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ad.name}</div>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--success)' }}>Score {ad.creativeScore?.overall}/100 · Top performer</div>
-                  </div>
-                  <ActionButton label="+20% Budget" icon={TrendingUp} color="var(--success)" canWrite={canWrite} />
-                </div>
-              ))}
+        {/* ── TAB: CRIATIVOS ────────────────────────────────────────────── */}
+        {panelTab === 'creatives' && (
+          allAdsCount === 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, gap: 12, color: 'var(--fg-muted)', paddingTop: 60 }}>
+              <Image size={40} style={{ opacity: 0.3 }} />
+              <p style={{ fontSize: '0.9rem' }}>Nenhum criativo encontrado nesta campanha.</p>
             </div>
-            {!canWrite && (
-              <div style={{ marginTop: 8, padding: '8px 10px', background: 'var(--bg-field)', borderRadius: 6, fontSize: '0.75rem', color: 'var(--fg-muted)', border: '1px solid var(--border-base)', display: 'flex', gap: 6, alignItems: 'center' }}>
-                <Lock size={12} />
-                Configure um token com <strong>ads_management</strong> nas Configurações para habilitar ações.
-              </div>
-            )}
-          </div>
+          ) : (
+            <CreativeGallery account={mockAccount} isLoading={false} campaignMode={campaignMode} />
+          )
         )}
 
-        {/* Ações gerais da campanha */}
-        <div>
-          <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Ações na Campanha</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            <ActionButton label="Pausar Campanha" icon={Pause} canWrite={canWrite} danger />
-            <ActionButton label="Duplicar Campanha" icon={RefreshCw} canWrite={canWrite} />
-            <ActionButton label="Ajustar Budget" icon={DollarSign} canWrite={canWrite} />
-          </div>
-        </div>
-
-        {/* Métricas resumidas */}
-        {ins && (
-          <div>
-            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Métricas do Período</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              {[
-                { label: 'Gasto', value: formatCurrency(ins.spend, currency) },
-                { label: 'CTR', value: `${ins.ctr.toFixed(2)}%` },
-                { label: 'CPM', value: formatCurrency(ins.cpm, currency) },
-                { label: 'Frequência', value: `${ins.frequency.toFixed(1)}x` },
-                ...(campaignMode === 'ecommerce' ? [
-                  { label: 'ROAS', value: ins.roas > 0 ? `${ins.roas.toFixed(2)}x` : 'N/A' },
-                  { label: 'CPA', value: ins.cpa > 0 ? formatCurrency(ins.cpa, currency) : 'N/A' },
-                ] : []),
-                ...(campaignMode === 'leads' ? [
-                  { label: 'Leads', value: String(ins.leads) },
-                  { label: 'CPL', value: ins.costPerLead > 0 ? formatCurrency(ins.costPerLead, currency) : 'N/A' },
-                ] : []),
-                ...(campaignMode === 'whatsapp' ? [
-                  { label: 'Conversas', value: String(ins.messagesStarted) },
-                  { label: 'Custo/Conv.', value: ins.costPerConversation > 0 ? formatCurrency(ins.costPerConversation, currency) : 'N/A' },
-                ] : []),
-              ].map((m) => (
-                <div key={m.label} style={{ background: 'var(--bg-component)', borderRadius: 7, padding: '8px 12px' }}>
-                  <div style={{ fontSize: '0.68rem', color: 'var(--fg-muted)', marginBottom: 2 }}>{m.label}</div>
-                  <div style={{ fontSize: '0.9rem', fontWeight: 700 }}>{m.value}</div>
-                </div>
-              ))}
+        {/* ── TAB: DIAGNÓSTICO ──────────────────────────────────────────── */}
+        {panelTab === 'diagnosis' && (
+          <>
+            {/* Diagnóstico */}
+            <div>
+              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Diagnóstico</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                {issues.map((issue, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 9, alignItems: 'flex-start', padding: '8px 10px', borderRadius: 7, background: issue.level === 'error' ? 'var(--danger-bg)' : issue.level === 'warn' ? 'var(--warning-bg)' : 'var(--success-bg)', border: `1px solid ${issue.level === 'error' ? 'var(--danger-border)' : issue.level === 'warn' ? 'var(--warning-border)' : 'var(--success-border)'}` }}>
+                    {iconFor(issue.level)}
+                    <span style={{ fontSize: '0.8rem', lineHeight: 1.45, color: issue.level === 'error' ? 'var(--danger)' : issue.level === 'warn' ? 'var(--warning)' : 'var(--success)' }}>{issue.msg}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
 
-        {/* Criativos resumo */}
-        {allAds.length > 0 && (
-          <div>
-            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Criativos ({allAds.length})</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {sortedAds.map(({ ad, adsetName }) => {
-                const sc = ad.creativeScore;
-                const color = !sc ? 'var(--fg-muted)' : sc.overall >= 70 ? 'var(--success)' : sc.overall >= 45 ? 'var(--warning)' : 'var(--danger)';
-                return (
-                  <div key={ad.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 7, background: 'var(--bg-component)', border: '1px solid var(--border-base)' }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 6, background: 'var(--bg-hover)', flexShrink: 0, overflow: 'hidden' }}>
-                      {ad.creative && (
-                        <img
-                          src={ad.creative.image_url || ad.creative.thumbnail_url || ad.creative.picture || ad.creative.effective_object_story_spec?.link_data?.picture || ''}
-                          alt=""
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                        />
-                      )}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: '0.78rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ad.name}</div>
-                      <div style={{ fontSize: '0.7rem', color: 'var(--fg-muted)' }}>{adsetName}</div>
-                    </div>
-                    {sc && (
-                      <div style={{ fontSize: '0.8rem', fontWeight: 700, color, flexShrink: 0 }}>{sc.overall}/100</div>
-                    )}
-                    {sc?.recommendation === 'PAUSE' && (
+            {/* Ações recomendadas */}
+            {(pauseableAds.length > 0 || scaleAds.length > 0) && (
+              <div>
+                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Ações Recomendadas</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {pauseableAds.map(({ ad }) => (
+                    <div key={ad.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '8px 12px', borderRadius: 7, background: 'var(--bg-component)', border: '1px solid var(--border-base)' }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: '0.78rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ad.name}</div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--danger)' }}>Score {ad.creativeScore?.overall}/100 · {ad.creativeScore?.fatigueLevel === 'CRITICAL' ? 'Fadiga crítica' : 'Performance baixa'}</div>
+                      </div>
                       <ActionButton label="Pausar" icon={Pause} color="var(--danger)" canWrite={canWrite} danger />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Públicos */}
-        {adsets.some((as) => as.audienceAnalysis) && (
-          <div>
-            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Diagnóstico de Público</div>
-            {adsets.map((as) => {
-              const aud = as.audienceAnalysis;
-              if (!aud) return null;
-              return (
-                <div key={as.id} style={{ padding: '10px 12px', borderRadius: 7, background: 'var(--bg-component)', border: '1px solid var(--border-base)', marginBottom: 8 }}>
-                  <div style={{ fontSize: '0.78rem', fontWeight: 600, marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{as.name}</div>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
-                    <span style={{ fontSize: '0.68rem', padding: '2px 6px', borderRadius: 10, background: 'var(--accent-subtle)', color: 'var(--accent-primary)', border: '1px solid var(--accent-border)' }}>{aud.type}</span>
-                    <span style={{ fontSize: '0.68rem', padding: '2px 6px', borderRadius: 10, background: aud.saturationRisk === 'HIGH' ? 'var(--danger-bg)' : aud.saturationRisk === 'MEDIUM' ? 'var(--warning-bg)' : 'var(--success-bg)', color: aud.saturationRisk === 'HIGH' ? 'var(--danger)' : aud.saturationRisk === 'MEDIUM' ? 'var(--warning)' : 'var(--success)', border: `1px solid ${aud.saturationRisk === 'HIGH' ? 'var(--danger-border)' : aud.saturationRisk === 'MEDIUM' ? 'var(--warning-border)' : 'var(--success-border)'}` }}>
-                      Saturação: {aud.saturationRisk}
-                    </span>
-                  </div>
-                  {aud.recommendations.slice(0, 2).map((r, i) => (
-                    <div key={i} style={{ fontSize: '0.75rem', color: 'var(--fg-subtle)', marginBottom: 3, lineHeight: 1.4 }}>→ {r}</div>
+                    </div>
+                  ))}
+                  {scaleAds.map(({ ad }) => (
+                    <div key={ad.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '8px 12px', borderRadius: 7, background: 'var(--bg-component)', border: '1px solid var(--border-base)' }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: '0.78rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ad.name}</div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--success)' }}>Score {ad.creativeScore?.overall}/100 · Top performer</div>
+                      </div>
+                      <ActionButton label="+20% Budget" icon={TrendingUp} color="var(--success)" canWrite={canWrite} />
+                    </div>
                   ))}
                 </div>
-              );
-            })}
-          </div>
+                {!canWrite && (
+                  <div style={{ marginTop: 8, padding: '8px 10px', background: 'var(--bg-field)', borderRadius: 6, fontSize: '0.75rem', color: 'var(--fg-muted)', border: '1px solid var(--border-base)', display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <Lock size={12} />
+                    Configure um token com <strong>ads_management</strong> nas Configurações para habilitar ações.
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Ações gerais da campanha */}
+            <div>
+              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Ações na Campanha</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                <ActionButton label="Pausar Campanha" icon={Pause} canWrite={canWrite} danger />
+                <ActionButton label="Duplicar Campanha" icon={RefreshCw} canWrite={canWrite} />
+                <ActionButton label="Ajustar Budget" icon={DollarSign} canWrite={canWrite} />
+              </div>
+            </div>
+
+            {/* Métricas resumidas */}
+            {ins && (
+              <div>
+                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Métricas do Período</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  {[
+                    { label: 'Gasto', value: formatCurrency(ins.spend, currency) },
+                    { label: 'CTR', value: `${ins.ctr.toFixed(2)}%` },
+                    { label: 'CPM', value: formatCurrency(ins.cpm, currency) },
+                    { label: 'Frequência', value: `${ins.frequency.toFixed(1)}x` },
+                    ...(campaignMode === 'ecommerce' ? [
+                      { label: 'ROAS', value: ins.roas > 0 ? `${ins.roas.toFixed(2)}x` : 'N/A' },
+                      { label: 'CPA', value: ins.cpa > 0 ? formatCurrency(ins.cpa, currency) : 'N/A' },
+                    ] : []),
+                    ...(campaignMode === 'leads' ? [
+                      { label: 'Leads', value: String(ins.leads) },
+                      { label: 'CPL', value: ins.costPerLead > 0 ? formatCurrency(ins.costPerLead, currency) : 'N/A' },
+                    ] : []),
+                    ...(campaignMode === 'whatsapp' ? [
+                      { label: 'Conversas', value: String(ins.messagesStarted) },
+                      { label: 'Custo/Conv.', value: ins.costPerConversation > 0 ? formatCurrency(ins.costPerConversation, currency) : 'N/A' },
+                    ] : []),
+                  ].map((m) => (
+                    <div key={m.label} style={{ background: 'var(--bg-component)', borderRadius: 7, padding: '8px 12px' }}>
+                      <div style={{ fontSize: '0.68rem', color: 'var(--fg-muted)', marginBottom: 2 }}>{m.label}</div>
+                      <div style={{ fontSize: '0.9rem', fontWeight: 700 }}>{m.value}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Públicos */}
+            {adsets.some((as) => as.audienceAnalysis) && (
+              <div>
+                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Diagnóstico de Público</div>
+                {adsets.map((as) => {
+                  const aud = as.audienceAnalysis;
+                  if (!aud) return null;
+                  return (
+                    <div key={as.id} style={{ padding: '10px 12px', borderRadius: 7, background: 'var(--bg-component)', border: '1px solid var(--border-base)', marginBottom: 8 }}>
+                      <div style={{ fontSize: '0.78rem', fontWeight: 600, marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{as.name}</div>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+                        <span style={{ fontSize: '0.68rem', padding: '2px 6px', borderRadius: 10, background: 'var(--accent-subtle)', color: 'var(--accent-primary)', border: '1px solid var(--accent-border)' }}>{aud.type}</span>
+                        <span style={{ fontSize: '0.68rem', padding: '2px 6px', borderRadius: 10, background: aud.saturationRisk === 'HIGH' ? 'var(--danger-bg)' : aud.saturationRisk === 'MEDIUM' ? 'var(--warning-bg)' : 'var(--success-bg)', color: aud.saturationRisk === 'HIGH' ? 'var(--danger)' : aud.saturationRisk === 'MEDIUM' ? 'var(--warning)' : 'var(--success)', border: `1px solid ${aud.saturationRisk === 'HIGH' ? 'var(--danger-border)' : aud.saturationRisk === 'MEDIUM' ? 'var(--warning-border)' : 'var(--success-border)'}` }}>
+                          Saturação: {aud.saturationRisk}
+                        </span>
+                      </div>
+                      {aud.recommendations.slice(0, 2).map((r, i) => (
+                        <div key={i} style={{ fontSize: '0.75rem', color: 'var(--fg-subtle)', marginBottom: 3, lineHeight: 1.4 }}>→ {r}</div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

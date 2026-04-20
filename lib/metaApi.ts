@@ -394,23 +394,24 @@ export class MetaAdsClient {
       'video_play_actions', 'video_thruplay_watched_actions',
     ].join(',');
 
+    // NOTE: Fields like `picture`, `effective_object_story_spec`, `object_story_spec`,
+    // and `asset_feed_spec` cause the Meta API to silently return an empty response when
+    // used as creative subfields on the /ads edge. Only use fields confirmed to be safe.
     const creativeFields = [
       'id', 'name', 'title', 'body',
       'call_to_action_type',
       'object_type',
       'image_url',
       'thumbnail_url',
-      'picture',
       'image_hash',
       'video_id',
-      'effective_object_story_spec{link_data{message,name,description,link,picture,call_to_action},video_data{message,title,image_url,video_id,call_to_action}}',
-      'object_story_spec{link_data{message,name,description,link,picture,call_to_action},video_data{message,title,image_url,video_id}}',
-      'asset_feed_spec{bodies{text},titles{text},descriptions{text},call_to_action_types}',
     ].join(',');
 
     const response = await this.fetch<MetaApiResponse<Ad>>(`${adsetId}/ads`, {
       fields: `id,name,status,creative{${creativeFields}},insights.date_preset(${datePreset}){${insightFields}}`,
       limit: '50',
+      thumbnail_width: '1080',
+      thumbnail_height: '1080',
     });
 
     const ads: Ad[] = (response.data || []).map((ad) => {
@@ -419,10 +420,9 @@ export class MetaAdsClient {
       let adFormat: Ad['adFormat'] = 'UNKNOWN';
       const c = ad.creative;
       if (c) {
-        if (c.asset_feed_spec) adFormat = 'DYNAMIC';
-        else if (c.effective_object_story_spec?.link_data?.child_attachments?.length) adFormat = 'CAROUSEL';
-        else if (c.video_id || c.effective_object_story_spec?.video_data || c.object_type === 'VIDEO') adFormat = 'VIDEO';
-        else if (c.image_url || c.picture || c.image_hash || c.effective_object_story_spec?.link_data?.picture || c.object_type === 'IMAGE') adFormat = 'IMAGE';
+        if (c.object_type === 'SHARE') adFormat = 'DYNAMIC'; // catalog / DPA ads
+        else if (c.video_id || c.object_type === 'VIDEO') adFormat = 'VIDEO';
+        else if (c.image_url || c.image_hash || c.object_type === 'IMAGE' || c.thumbnail_url) adFormat = 'IMAGE';
       }
 
       return { ...ad, adFormat, insightsSummary, creativeScore: scoreCreative(ad, insightsSummary, mode) };
@@ -433,13 +433,7 @@ export class MetaAdsClient {
     // a direct call to /{creative_id} with specific fields is more reliable.
     const missingImage = ads.filter((ad) => {
       if (!ad.creative?.id) return false;
-      const c = ad.creative;
-      return !(
-        c.image_url || c.thumbnail_url || c.picture ||
-        c.effective_object_story_spec?.link_data?.picture ||
-        c.effective_object_story_spec?.video_data?.image_url ||
-        c.object_story_spec?.link_data?.picture
-      );
+      return !(ad.creative.image_url || ad.creative.thumbnail_url);
     });
 
     if (missingImage.length > 0) {
@@ -459,21 +453,17 @@ export class MetaAdsClient {
   // Fetch thumbnail/image for a creative via the adcreatives endpoint
   async getCreativeThumbnail(creativeId: string): Promise<string | undefined> {
     try {
+      // Only request fields confirmed safe — `picture` and `effective_object_story_spec`
+      // cause the API to return empty responses for many ad types.
       const res = await this.fetch<{
         thumbnail_url?: string;
         image_url?: string;
-        picture?: string;
-        effective_object_story_spec?: { link_data?: { picture?: string }; video_data?: { image_url?: string } };
       }>(`${creativeId}`, {
-        fields: 'thumbnail_url,image_url,picture,effective_object_story_spec{link_data{picture},video_data{image_url}}',
+        fields: 'thumbnail_url,image_url',
+        thumbnail_width: '1080',
+        thumbnail_height: '1080',
       });
-      return (
-        res.thumbnail_url ||
-        res.image_url ||
-        res.picture ||
-        res.effective_object_story_spec?.link_data?.picture ||
-        res.effective_object_story_spec?.video_data?.image_url
-      );
+      return res.thumbnail_url || res.image_url;
     } catch {
       return undefined;
     }
