@@ -3,7 +3,6 @@
 import { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { MetaAdsClient, exchangeForLongLivedToken } from '@/lib/metaApi';
 import type { AdAccount, DatePreset, CampaignMode, TokenType, MetaPermission } from '@/lib/metaTypes';
-import { DEMO_ACCOUNT } from '@/lib/demoData';
 import type { AIProvider, AIProviderConfig } from '@/lib/aiClient';
 import { MODEL_OPTIONS, DEFAULT_MODELS } from '@/lib/aiClient';
 
@@ -62,7 +61,6 @@ interface AppContextValue {
   convertError: string | null;
   convertSuccess: boolean;
   syncMetaData: () => Promise<void>;
-  loadDemoData: () => void;
 
   // AI
   aiProvider: AIProvider;
@@ -90,6 +88,7 @@ interface AppContextValue {
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
+const NON_DEMO_PROVIDERS: AIProvider[] = ['gemini', 'openrouter', 'openai', 'anthropic'];
 
 export function useApp() {
   const ctx = useContext(AppContext);
@@ -128,8 +127,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setMetaAppId(ls('meta_app_id'));
     setMetaAppSecret(ls('meta_app_secret'));
 
-    const rawProvider = ls('ai_provider', 'demo');
-    const provider = (rawProvider in DEFAULT_MODELS ? rawProvider : 'demo') as AIProvider;
+    const rawProvider = ls('ai_provider', 'openrouter') as AIProvider;
+    const provider = NON_DEMO_PROVIDERS.includes(rawProvider) ? rawProvider : 'openrouter';
     setAiProviderState(provider);
     setAiApiKeys({
       gemini: ls('gemini_api_key'),
@@ -184,7 +183,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [convertSuccess, setConvertSuccess] = useState(false);
 
   // AI
-  const [aiProvider, setAiProviderState] = useState<AIProvider>('demo');
+  const [aiProvider, setAiProviderState] = useState<AIProvider>('openrouter');
   const [aiApiKeys, setAiApiKeys] = useState<Record<AIProvider, string>>({
     gemini: '',
     openrouter: '',
@@ -192,18 +191,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     anthropic: '',
     demo: '',
   });
-  const [aiModel, setAiModelState] = useState<string>(DEFAULT_MODELS.demo);
+  const [aiModel, setAiModelState] = useState<string>(DEFAULT_MODELS.openrouter);
 
   const aiConfig: AIProviderConfig = { provider: aiProvider, apiKey: aiApiKeys[aiProvider] || '', model: aiModel };
 
   const switchProvider = (p: AIProvider) => {
-    setAiProviderState(p);
-    setLs('ai_provider', p);
-    const saved = ls(`ai_model_${p}`);
-    const validIds = (MODEL_OPTIONS[p] || []).map((m) => m.id);
-    const resolved = saved && validIds.includes(saved) ? saved : DEFAULT_MODELS[p];
+    const provider = p === 'demo' ? 'openrouter' : p;
+    setAiProviderState(provider);
+    setLs('ai_provider', provider);
+    const saved = ls(`ai_model_${provider}`);
+    const validIds = (MODEL_OPTIONS[provider] || []).map((m) => m.id);
+    const resolved = saved && validIds.includes(saved) ? saved : DEFAULT_MODELS[provider];
     setAiModelState(resolved);
-    setLs(`ai_model_${p}`, resolved);
+    setLs(`ai_model_${provider}`, resolved);
   };
   const switchModel = (m: string) => {
     setAiModelState(m);
@@ -254,15 +254,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [metaAccessToken, adAccountId, datePreset, campaignMode]);
 
-  const loadDemoData = useCallback(() => {
-    setAccount(DEMO_ACCOUNT);
-    const ctx = MetaAdsClient.formatForAgent(DEMO_ACCOUNT, 'Demo — Últimos 30 dias', campaignMode);
-    setMetaContext(ctx);
-    setLastSynced('Demo');
-    setSyncError(null);
-    switchProvider('demo');
-  }, [campaignMode]);
-
   // suppress unused
   void tokenType; void setTokenType; void metaAppId; void setMetaAppId;
   void metaAppSecret; void setMetaAppSecret; void isConvertingToken; void setIsConvertingToken;
@@ -280,7 +271,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       tokenType, setTokenType, metaAppId, setMetaAppId,
       metaAppSecret, setMetaAppSecret,
       isConvertingToken, convertError, convertSuccess,
-      syncMetaData, loadDemoData, metaContext,
+      syncMetaData, metaContext,
       aiProvider, aiApiKeys, aiModel, aiConfig,
       switchProvider, switchModel, saveAiKey,
       clientNiche, clientProduct, clientObjective, clientTicket, clientDifferentials,

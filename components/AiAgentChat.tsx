@@ -3,7 +3,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, Bot, User, AlertCircle, Zap, TrendingUp, Eye, ShoppingCart, Target, Search, BarChart2, Briefcase, Users, MessageSquare } from 'lucide-react';
 import { chatWithAgent, type ChatMessage, type AIProviderConfig } from '@/lib/aiClient';
-import { getDemoResponse } from '@/lib/demoData';
 import ReactMarkdown from 'react-markdown';
 
 interface Message extends ChatMessage {
@@ -101,14 +100,13 @@ export function AiAgentChat({ aiConfig, metaContext, hasMetaData, clientProfile 
     const messageText = text || input;
     if (!messageText.trim()) return;
 
-    const isDemo = aiConfig.provider === 'demo';
-    if (!isDemo && !aiConfig.apiKey) {
+    if (!aiConfig.apiKey) {
       setMessages((prev) => [
         ...prev,
         {
           id: Date.now().toString(),
           role: 'agent',
-          text: `⚠️ **API Key não configurada.**\n\nVá em **⚙️ Configurações** e adicione sua chave de API, ou ative o **🎭 Modo Demo** para testar sem chave.`,
+          text: '⚠️ **API Key não configurada.**\n\nVá em **⚙️ Configurações** e adicione sua chave de API para continuar.',
         },
       ]);
       return;
@@ -136,13 +134,12 @@ export function AiAgentChat({ aiConfig, metaContext, hasMetaData, clientProfile 
       const isQuotaError = errMsg.includes('⏳') || errMsg.includes('Limite de requisições') || errMsg.includes('429') || errMsg.includes('quota');
 
       if (isQuotaError) {
-        const demoFallback = getDemoResponse(messageText);
         setMessages((prev) => [
           ...prev,
           {
             id: (Date.now() + 1).toString(),
             role: 'agent',
-            text: `> ⏳ *Quota da API atingida — respondendo via Modo Demo temporariamente. Aguarde 1 min ou troque para Gemini 2.0 Flash Lite / OpenRouter free nas Configurações.*\n\n${demoFallback}`,
+            text: '> ⏳ *Quota da API atingida. Aguarde 1 minuto e tente de novo, ou troque de modelo/provedor em Configurações.*',
           },
         ]);
       } else {
@@ -160,8 +157,7 @@ export function AiAgentChat({ aiConfig, metaContext, hasMetaData, clientProfile 
     }
   };
 
-  const isDemo = aiConfig.provider === 'demo';
-  const hasKey = !!aiConfig.apiKey || isDemo;
+  const hasKey = !!aiConfig.apiKey;
   const nicheLabel = clientProfile?.niche || clientProfile?.product;
 
   return (
@@ -175,8 +171,8 @@ export function AiAgentChat({ aiConfig, metaContext, hasMetaData, clientProfile 
           <h3>ARIA — Meta Ads Intelligence Agent</h3>
           <p>
             Sênior Media Buyer & Estrategista ·{' '}
-            {isDemo ? '🎭 Modo Demo' :
-             aiConfig.provider === 'gemini' ? 'Google Gemini' :
+            {aiConfig.provider === 'gemini' ? 'Google Gemini' :
+             aiConfig.provider === 'openrouter' ? 'OpenRouter' :
              aiConfig.provider === 'openai' ? 'OpenAI GPT' :
              'Anthropic Claude'}
             {' '}· {aiConfig.model}
@@ -262,7 +258,7 @@ export function AiAgentChat({ aiConfig, metaContext, hasMetaData, clientProfile 
       <div className="chat-input-area">
         {!hasKey && (
           <div style={{ color: 'var(--warning)', fontSize: '0.85rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <AlertCircle size={16} /> API Key não configurada. Configure em Configurações (⚙️) ou ative o Modo Demo.
+            <AlertCircle size={16} /> API Key não configurada. Configure em Configurações (⚙️).
           </div>
         )}
         {hasMetaData && (

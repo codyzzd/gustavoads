@@ -341,7 +341,7 @@ function CreativeCard({ item, onClick }: { item: CardItem; onClick: () => void }
 }
 
 // ── Detail Modal ───────────────────────────────────────────────────────────
-function CreativeDetailModal({ item, onClose }: { item: CardItem; onClose: () => void }) {
+function CreativeDetailModal({ item, onClose, standalone = false }: { item: CardItem; onClose: () => void; standalone?: boolean }) {
   const { ad, campaignName, adsetName, currency, rank, niche, mode, aiConfig } = item;
   const score = ad.creativeScore;
   const ins = ad.insightsSummary;
@@ -508,48 +508,51 @@ function CreativeDetailModal({ item, onClose }: { item: CardItem; onClose: () =>
   if (mode === 'awareness') primaryMetric = { label: 'CPM', value: ins?.cpm ? fmtCur(ins.cpm, currency) : 'N/A' };
 
   const renderAnalysisText = (text: string) => (
-    <div style={{ fontSize: '0.8125rem', color: 'var(--fg-subtle)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
-      {text.split('\n').map((line, i) => {
-        if (line.startsWith('## ')) {
-          return (
-            <div key={i} style={{ fontWeight: 700, color: 'var(--fg-base)', fontSize: '0.8125rem', marginTop: i > 0 ? 14 : 0, marginBottom: 4 }}>
-              {line.replace('## ', '')}
-            </div>
-          );
-        }
-        if (line.startsWith('- ') || line.startsWith('→ ')) {
-          return (
-            <div key={i} style={{ paddingLeft: 10, marginBottom: 3 }}>
-              <span style={{ color: 'var(--accent-primary)', marginRight: 6 }}>→</span>
-              {line.replace(/^[-→] /, '')}
-            </div>
-          );
-        }
-        if (line.trim() === '') return <div key={i} style={{ height: 4 }} />;
-        return <div key={i} style={{ marginBottom: 2 }}>{line}</div>;
-      })}
+    <div style={{ fontSize: '0.8125rem', color: 'var(--fg-subtle)', lineHeight: 1.7 }}>
+      <ReactMarkdown
+        components={{
+          h1: ({ children }) => <h3 style={{ fontSize: '0.88rem', margin: '14px 0 6px', color: 'var(--fg-base)' }}>{children}</h3>,
+          h2: ({ children }) => <h3 style={{ fontSize: '0.88rem', margin: '14px 0 6px', color: 'var(--fg-base)' }}>{children}</h3>,
+          h3: ({ children }) => <h4 style={{ fontSize: '0.84rem', margin: '12px 0 6px', color: 'var(--fg-base)' }}>{children}</h4>,
+          p: ({ children }) => <p style={{ margin: '0 0 8px', lineHeight: 1.65 }}>{children}</p>,
+          ul: ({ children }) => <ul style={{ margin: '0 0 8px 18px', padding: 0 }}>{children}</ul>,
+          ol: ({ children }) => <ol style={{ margin: '0 0 8px 18px', padding: 0 }}>{children}</ol>,
+          li: ({ children }) => <li style={{ marginBottom: 4 }}>{children}</li>,
+          strong: ({ children }) => <strong style={{ color: 'var(--fg-base)', fontWeight: 700 }}>{children}</strong>,
+          em: ({ children }) => <em style={{ color: 'var(--fg-subtle)' }}>{children}</em>,
+          code: ({ children }) => <code style={{ background: 'var(--bg-base)', padding: '1px 4px', borderRadius: 4 }}>{children}</code>,
+        }}
+      >
+        {text}
+      </ReactMarkdown>
     </div>
   );
 
   return (
     <div
       style={{
-        position: 'fixed', inset: 0,
-        background: 'rgba(0,0,0,0.7)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        zIndex: 200, padding: '24px 16px',
-        animation: 'fadeIn 0.15s ease',
+        position: standalone ? 'relative' : 'fixed',
+        inset: standalone ? 'auto' : 0,
+        background: standalone ? 'transparent' : 'rgba(0,0,0,0.7)',
+        display: 'flex',
+        alignItems: standalone ? 'stretch' : 'center',
+        justifyContent: 'center',
+        zIndex: standalone ? 'auto' : 200,
+        padding: standalone ? 0 : '24px 16px',
+        animation: standalone ? 'none' : 'fadeIn 0.15s ease',
       }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onClick={(e) => { if (!standalone && e.target === e.currentTarget) onClose(); }}
     >
       <div style={{
         background: 'var(--bg-component)',
         border: '1px solid var(--border-base)',
         borderRadius: 'var(--radius-lg)',
-        width: '100%', maxWidth: 860,
-        maxHeight: '90vh', overflow: 'hidden',
+        width: '100%',
+        maxWidth: standalone ? 1120 : 860,
+        maxHeight: standalone ? 'none' : '90vh',
+        overflow: 'hidden',
         display: 'flex', flexDirection: 'column',
-        boxShadow: '0 25px 60px rgba(0,0,0,0.5)',
+        boxShadow: standalone ? 'none' : '0 25px 60px rgba(0,0,0,0.5)',
       }}>
         {/* Modal header */}
         <div style={{
@@ -562,12 +565,33 @@ function CreativeDetailModal({ item, onClose }: { item: CardItem; onClose: () =>
             <div style={{ fontWeight: 600, fontSize: '0.9375rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ad.name}</div>
             <div style={{ fontSize: '0.75rem', color: 'var(--fg-muted)' }}>{campaignName} · {adsetName}</div>
           </div>
-          <button
-            onClick={onClose}
-            style={{ background: 'transparent', border: 'none', padding: 6, cursor: 'pointer', color: 'var(--fg-muted)', borderRadius: 6, height: 'auto' }}
-          >
-            <X size={18} />
-          </button>
+          {standalone ? (
+            <button
+              onClick={onClose}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                border: '1px solid var(--border-base)',
+                background: 'transparent',
+                color: 'var(--fg-subtle)',
+                borderRadius: 6,
+                height: 32,
+                padding: '0 10px',
+                cursor: 'pointer',
+                fontSize: '0.78rem',
+                fontWeight: 600,
+              }}
+            >
+              <ChevronRight size={14} style={{ transform: 'rotate(180deg)' }} />
+              Voltar
+            </button>
+          ) : (
+            <button
+              onClick={onClose}
+              style={{ background: 'transparent', border: 'none', padding: 6, cursor: 'pointer', color: 'var(--fg-muted)', borderRadius: 6, height: 'auto' }}
+            >
+              <X size={18} />
+            </button>
+          )}
         </div>
 
         {/* Modal body */}
@@ -1056,8 +1080,17 @@ function GallerySummary({ ads, niche, mode }: { ads: Array<{ ad: Ad }>; niche?: 
 }
 
 // ── Main export ────────────────────────────────────────────────────────────
-export function CreativeGallery({ account, isLoading, campaignMode, clientProfile, aiConfig }: CreativeGalleryProps) {
-  const [selectedItem, setSelectedItem] = useState<CardItem | null>(null);
+export function CreativeGallery({
+  account,
+  isLoading,
+  campaignMode,
+  clientProfile,
+  aiConfig,
+  selectedCreativeId,
+  renderDetailAsPage = false,
+  onBackFromDetail,
+}: CreativeGalleryProps) {
+  const router = useRouter();
 
   if (isLoading) {
     return (
@@ -1073,7 +1106,7 @@ export function CreativeGallery({ account, isLoading, campaignMode, clientProfil
         <div style={{ fontSize: 48, marginBottom: 16 }}>🖼️</div>
         <h3>Nenhum criativo carregado</h3>
         <p style={{ color: 'var(--fg-subtle)', marginBottom: 16 }}>
-          Sincronize sua conta Meta Ads ou ative o Modo Demo.
+          Sincronize sua conta Meta Ads para carregar os criativos.
         </p>
         {clientProfile?.niche && (
           <div style={{ display: 'inline-block', padding: '8px 16px', background: 'var(--accent-subtle)', border: '1px solid var(--accent-border)', borderRadius: 8, fontSize: '0.83rem', color: 'var(--accent-primary)' }}>
@@ -1085,11 +1118,11 @@ export function CreativeGallery({ account, isLoading, campaignMode, clientProfil
   }
 
   // Collect all ads
-  const allAds: Array<{ ad: Ad; campaignName: string; adsetName: string }> = [];
+  const allAds: Array<{ ad: Ad; campaignId: string; campaignName: string; adsetName: string }> = [];
   for (const campaign of account.campaigns || []) {
     for (const adset of campaign.adsets || []) {
       for (const ad of adset.ads || []) {
-        allAds.push({ ad, campaignName: campaign.name, adsetName: adset.name });
+        allAds.push({ ad, campaignId: campaign.id, campaignName: campaign.name, adsetName: adset.name });
       }
     }
   }
@@ -1113,6 +1146,7 @@ export function CreativeGallery({ account, isLoading, campaignMode, clientProfil
   const niche = clientProfile?.niche;
   const makeItem = (entry: typeof sorted[0], rank: number): CardItem => ({
     ad: entry.ad,
+    campaignId: entry.campaignId,
     campaignName: entry.campaignName,
     adsetName: entry.adsetName,
     currency: account.currency,
@@ -1121,6 +1155,53 @@ export function CreativeGallery({ account, isLoading, campaignMode, clientProfil
     aiConfig,
     mode: campaignMode,
   });
+  const handleCardOpen = (item: CardItem) => {
+    if (!item.campaignId) return;
+    router.push(`/campanhas/${item.campaignId}/criativos/${item.ad.id}`);
+  };
+
+  const selectedFromRoute = selectedCreativeId
+    ? (() => {
+      const index = sorted.findIndex((entry) => entry.ad.id === selectedCreativeId);
+      if (index < 0) return null;
+      return makeItem(sorted[index], index + 1);
+    })()
+    : null;
+
+  if (renderDetailAsPage) {
+    if (!selectedFromRoute) {
+      return (
+        <div className="glass-panel" style={{ textAlign: 'center', padding: 40 }}>
+          <div style={{ fontSize: '1rem', color: 'var(--fg-muted)', marginBottom: 12 }}>
+            Criativo não encontrado para esta campanha.
+          </div>
+          <button
+            onClick={() => onBackFromDetail ? onBackFromDetail() : router.back()}
+            style={{
+              border: '1px solid var(--border-base)',
+              background: 'var(--bg-component)',
+              color: 'var(--fg-base)',
+              borderRadius: 8,
+              padding: '8px 12px',
+              fontSize: '0.84rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            Voltar para campanha
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <CreativeDetailModal
+        item={selectedFromRoute}
+        standalone
+        onClose={() => onBackFromDetail ? onBackFromDetail() : router.push(`/campanhas/${selectedFromRoute.campaignId}`)}
+      />
+    );
+  }
 
   const renderGroup = (
     items: typeof sorted,
@@ -1140,7 +1221,7 @@ export function CreativeGallery({ account, isLoading, campaignMode, clientProfil
           {items.map((entry, i) => {
             const item = makeItem(entry, startRank + i);
             return (
-              <CreativeCard key={entry.ad.id} item={item} onClick={() => setSelectedItem(item)} />
+              <CreativeCard key={entry.ad.id} item={item} onClick={() => handleCardOpen(item)} />
             );
           })}
         </div>
@@ -1163,10 +1244,6 @@ export function CreativeGallery({ account, isLoading, campaignMode, clientProfil
           <Pause size={16} color="var(--danger)" />
         )}
       </div>
-
-      {selectedItem && (
-        <CreativeDetailModal item={selectedItem} onClose={() => setSelectedItem(null)} />
-      )}
     </>
   );
 }

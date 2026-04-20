@@ -4,7 +4,6 @@ import { useApp } from '@/app/providers';
 import { useRouter } from 'next/navigation';
 import { META_PERMISSION_INFO, CAMPAIGN_MODE_LABELS } from '@/lib/metaTypes';
 import type { MetaPermission } from '@/lib/metaTypes';
-import type { AIProvider } from '@/lib/aiClient';
 import { PROVIDER_LABELS, MODEL_OPTIONS } from '@/lib/aiClient';
 import { useState } from 'react';
 import { Sun, Moon, Zap, Eye, EyeOff } from 'lucide-react';
@@ -24,7 +23,7 @@ export default function ConfiguracoesPage() {
     clientTicket, setClientTicket,
     clientDifferentials, setClientDifferentials,
     saveClientField,
-    syncMetaData, loadDemoData,
+    syncMetaData,
     isLoading,
   } = useApp();
   const router = useRouter();
@@ -189,44 +188,19 @@ export default function ConfiguracoesPage() {
         <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--fg-subtle)', marginBottom: 14 }}>
           🤖 Provedor de IA
         </div>
-
-        <div
-          onClick={loadDemoData}
-          style={{ cursor: 'pointer', marginBottom: 14, padding: '12px 14px', background: 'var(--warning-bg)', border: '1px solid var(--warning-border)', borderRadius: 8, display: 'flex', gap: 12, alignItems: 'center', transition: 'border-color 0.15s' }}
-          onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--warning)')}
-          onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--warning-border)')}
-        >
-          <div style={{ fontSize: 24, flexShrink: 0 }}>🎭</div>
-          <div>
-            <div style={{ fontWeight: 600, color: 'var(--warning)', marginBottom: 2, fontSize: '0.8125rem' }}>Modo Demo — Sem API Key</div>
-            <div style={{ fontSize: '0.775rem', color: 'var(--fg-subtle)', lineHeight: 1.4 }}>
-              Dados fictícios realistas. <strong style={{ color: 'var(--warning)' }}>Clique para ativar →</strong>
-            </div>
-          </div>
-        </div>
-
-        <div
-          onClick={() => switchProvider('openrouter' as AIProvider)}
-          style={{ background: aiProvider === 'openrouter' ? 'var(--success-bg)' : 'var(--bg-field)', border: aiProvider === 'openrouter' ? '1px solid var(--success-border)' : '1px solid var(--border-base)', borderRadius: 8, padding: '10px 12px', marginBottom: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, transition: 'border-color 0.15s' }}
-        >
-          <span style={{ fontSize: '1.1rem' }}>🆓</span>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--success)' }}>OpenRouter — Modelos GRATUITOS</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--fg-muted)', marginTop: 1 }}>Llama 4, Gemma 3, DeepSeek V3 e mais — sem cartão</div>
-          </div>
-          {aiProvider === 'openrouter' && <span style={{ fontSize: '0.72rem', color: 'var(--success)', fontWeight: 700 }}>✓ ATIVO</span>}
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 14 }}>
-          {(['gemini', 'openai', 'anthropic'] as AIProvider[]).map((p) => (
-            <button
-              key={p}
-              onClick={() => switchProvider(p)}
-              style={{ padding: '9px 8px', borderRadius: 6, fontSize: '0.8rem', fontWeight: 500, border: aiProvider === p ? '1px solid var(--accent-primary)' : '1px solid var(--border-base)', background: aiProvider === p ? 'var(--accent-subtle)' : 'var(--bg-field)', color: aiProvider === p ? 'var(--accent-primary)' : 'var(--fg-subtle)', cursor: 'pointer', transition: 'all 0.15s' }}
-            >
-              {p === 'gemini' ? '🔵 Gemini' : p === 'openai' ? '🟢 GPT' : '🟣 Claude'}
-            </button>
-          ))}
+        <div className="form-group">
+          <label>Provedor</label>
+          <select
+            value={aiProvider}
+            onChange={(e) => switchProvider(e.target.value as 'gemini' | 'openrouter' | 'openai' | 'anthropic')}
+            className="form-input"
+            style={{ cursor: 'pointer' }}
+          >
+            <option value="openrouter">OpenRouter (modelos gratuitos disponíveis)</option>
+            <option value="gemini">Google Gemini</option>
+            <option value="openai">OpenAI GPT</option>
+            <option value="anthropic">Anthropic Claude</option>
+          </select>
         </div>
 
         <div className="form-group">
@@ -238,56 +212,48 @@ export default function ConfiguracoesPage() {
           </select>
         </div>
 
-        {aiProvider !== 'demo' && (
-          <div className="form-group" style={{ marginBottom: 0 }}>
-            <label>API Key — {PROVIDER_LABELS[aiProvider]} <span style={{ color: 'var(--danger)' }}>*</span></label>
-            <div style={{ position: 'relative' }}>
-              <input
-                type={showAiApiKey ? 'text' : 'password'}
-                className="form-input"
-                placeholder={aiProvider === 'gemini' ? 'AIzaSy...' : aiProvider === 'openrouter' ? 'sk-or-v1-...' : aiProvider === 'openai' ? 'sk-...' : 'sk-ant-...'}
-                value={aiApiKeys[aiProvider] || ''}
-                onChange={(e) => saveAiKey(aiProvider, e.target.value)}
-                style={{ paddingRight: 40 }}
-              />
-              <button
-                type="button"
-                aria-label={showAiApiKey ? 'Ocultar API key' : 'Mostrar API key'}
-                title={showAiApiKey ? 'Ocultar' : 'Mostrar'}
-                onClick={() => setShowAiApiKey((v) => !v)}
-                style={{
-                  position: 'absolute',
-                  right: 6,
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  width: 28,
-                  height: 28,
-                  padding: 0,
-                  border: 'none',
-                  background: 'transparent',
-                  color: 'var(--fg-muted)',
-                  borderRadius: 6,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                {showAiApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
+        <div className="form-group" style={{ marginBottom: 0 }}>
+          <label>API Key — {PROVIDER_LABELS[aiProvider]} <span style={{ color: 'var(--danger)' }}>*</span></label>
+          <div style={{ position: 'relative' }}>
+            <input
+              type={showAiApiKey ? 'text' : 'password'}
+              className="form-input"
+              placeholder={aiProvider === 'gemini' ? 'AIzaSy...' : aiProvider === 'openrouter' ? 'sk-or-v1-...' : aiProvider === 'openai' ? 'sk-...' : 'sk-ant-...'}
+              value={aiApiKeys[aiProvider] || ''}
+              onChange={(e) => saveAiKey(aiProvider, e.target.value)}
+              style={{ paddingRight: 40 }}
+            />
+            <button
+              type="button"
+              aria-label={showAiApiKey ? 'Ocultar API key' : 'Mostrar API key'}
+              title={showAiApiKey ? 'Ocultar' : 'Mostrar'}
+              onClick={() => setShowAiApiKey((v) => !v)}
+              style={{
+                position: 'absolute',
+                right: 6,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                width: 28,
+                height: 28,
+                padding: 0,
+                border: 'none',
+                background: 'transparent',
+                color: 'var(--fg-muted)',
+                borderRadius: 6,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              {showAiApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </div>
+          {aiApiKeys[aiProvider] && (
+            <div style={{ marginTop: 8, padding: '7px 10px', background: 'var(--success-bg)', borderRadius: 6, fontSize: '0.775rem', color: 'var(--success)', border: '1px solid var(--success-border)' }}>
+              ✓ Chave salva automaticamente
             </div>
-            {aiApiKeys[aiProvider] && (
-              <div style={{ marginTop: 8, padding: '7px 10px', background: 'var(--success-bg)', borderRadius: 6, fontSize: '0.775rem', color: 'var(--success)', border: '1px solid var(--success-border)' }}>
-                ✓ Chave salva automaticamente
-              </div>
-            )}
-          </div>
-        )}
-
-        {aiProvider === 'demo' && (
-          <div style={{ padding: '9px 12px', background: 'var(--warning-bg)', borderRadius: 6, fontSize: '0.8rem', color: 'var(--warning)', border: '1px solid var(--warning-border)' }}>
-            🎭 Modo Demo ativo — nenhuma API Key necessária.
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Perfil do Cliente */}
